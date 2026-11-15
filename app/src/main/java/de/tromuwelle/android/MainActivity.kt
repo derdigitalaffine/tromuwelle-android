@@ -485,12 +485,18 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             val useTranscode = compatible && entry.kind == EntryKind.FILE && !entry.audio
             val startSeconds = if (useTranscode) fromSeconds.takeIf { it > 0 } ?: (saved / 1000) else 0L
             playbackStartMs = if (useTranscode) startSeconds * 1000 else 0L
-            val queue = if (entry.kind == EntryKind.TRACK) entries.filter { it.kind == EntryKind.TRACK }
-                .map { it.mediaItem(session) } else listOf(entry.mediaItem(session, compatible, quality, startSeconds, radioBitrate, radioCodec))
-            queueEntries = if (entry.kind == EntryKind.TRACK)
-                entries.filter { it.kind == EntryKind.TRACK } else listOf(entry)
+            // A global-search hit can be opened before its library page loads.
+            // Always include the requested track rather than starting an empty
+            // or unrelated previous-section queue.
+            val visibleTracks = entries.filter { it.kind == EntryKind.TRACK }
+            val chosenTracks = if (entry.kind == EntryKind.TRACK &&
+                visibleTracks.any { it.id == entry.id }) visibleTracks else listOf(entry)
+            val queue = if (entry.kind == EntryKind.TRACK)
+                chosenTracks.map { it.mediaItem(session) }
+                else listOf(entry.mediaItem(session, compatible, quality, startSeconds, radioBitrate, radioCodec))
+            queueEntries = if (entry.kind == EntryKind.TRACK) chosenTracks else listOf(entry)
             val position = if (entry.kind == EntryKind.TRACK)
-                entries.filter { it.kind == EntryKind.TRACK }.indexOf(entry).coerceAtLeast(0) else 0
+                chosenTracks.indexOfFirst { it.id == entry.id }.coerceAtLeast(0) else 0
             val closeToEnd = entry.duration > 0 && saved >= entry.duration * 1000 - 30_000
             val resume = if (useTranscode || closeToEnd) 0L else saved
             if (entry.kind == EntryKind.FILE && !entry.audio) {
@@ -1221,7 +1227,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     .orEmpty().ifBlank { current?.title.orEmpty() }
                 // The media itself is the focus; controls sit below the art
                 // instead of putting a tall text-heavy form above the cover.
-                Box(Modifier.fillMaxWidth().height(325.dp)
+                Box(Modifier.fillMaxWidth().height(
+                    if (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < 600)
+                        210.dp else 325.dp)
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
                     .background(Brush.linearGradient(listOf(
                         Color(0xFF173E3D), Color(0xFF222953), Color(0xFF10121E))))) {
@@ -1271,6 +1279,26 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         Icon(Icons.Rounded.Cast, null)
                         Spacer(Modifier.width(8.dp))
                         Text("Cast", maxLines = 1)
+                    }
+                }
+                if (playbackError.isNotBlank()) {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(15.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.WifiOff, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer)
+                            Spacer(Modifier.width(10.dp))
+                            Text(playbackError, modifier = Modifier.weight(1f),
+                                maxLines = 3,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer)
+                            if (current?.kind == EntryKind.RADIO) {
+                                TextButton(onClick = {
+                                    current?.let { playItem(it) }
+                                }) { Text("Erneut") }
+                            }
+                        }
                     }
                 }
                 NativePlayerControls(player, isLive = current?.kind == EntryKind.RADIO,
