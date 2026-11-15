@@ -1,9 +1,13 @@
 name: Android APK
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'release/**'
   pull_request:
   workflow_dispatch:
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -24,9 +28,43 @@ jobs:
           test -n "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-      - run: gradle :app:assembleDebug --stacktrace
+      - name: Unit tests and assemble installable APK
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: tromuwelle-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 30
+
+  prerelease:
+    needs: apk
+    if: startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Determine version from branch
+        id: release
+        run: echo "tag=${GITHUB_REF_NAME#release/}" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: tromuwelle-debug-apk
+          path: release-assets
+      - name: Prepare APK
+        run: |
+          mkdir -p publish
+          cp release-assets/app-debug.apk "publish/tromuwelle-android-${GITHUB_REF_NAME#release/}.apk"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: Tromuwelle Android ${{ steps.release.outputs.tag }}
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            Installierbare Android-APK (API 26+), mit Android-Debugschlüssel signiert.
+            Vorabversion zur privaten Installation, keine Play-Store-/Produktionssignierung.
+            Der Server benötigt HTTPS; eine private CA muss auf dem Gerät installiert sein.
+            Live-Ende-zu-Ende-Tests mit einem echten Tromuwelle-Server und Android-Gerät stehen noch aus.
+          files: publish/*.apk
+          fail_on_unmatched_files: true
