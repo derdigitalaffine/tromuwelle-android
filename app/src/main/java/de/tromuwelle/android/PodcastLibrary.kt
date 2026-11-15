@@ -3,6 +3,7 @@ package de.tromuwelle.android
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -397,9 +398,13 @@ fun StreamPodcastTranscript(session: TromuwelleSession, episode: JSONObject,
         }
     }
     val cues = transcript?.optJSONArray("items").asObjects()
+    val scroll = rememberLazyListState()
     // Cues contain start/end in seconds; plain-text transcripts have no timestamps.
     val activeIndex = cues.indexOfLast { it.has("start") && !it.isNull("start") &&
         it.optDouble("start") <= activeSeconds }
+    LaunchedEffect(activeIndex, offset, follow) {
+        if (follow && activeIndex in cues.indices) scroll.animateScrollToItem(activeIndex)
+    }
     LaunchedEffect(activeSeconds, follow, transcript) {
         if (!follow || cues.isEmpty() || activeIndex < 0) return@LaunchedEffect
         val last = cues.lastOrNull()?.optDouble("end", -1.0) ?: -1.0
@@ -423,7 +428,7 @@ fun StreamPodcastTranscript(session: TromuwelleSession, episode: JSONObject,
         if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
         if (transcript == null && error.isBlank())
             LinearProgressIndicator(Modifier.fillMaxWidth())
-        LazyColumn(Modifier.weight(1f),
+        LazyColumn(Modifier.weight(1f), state = scroll,
             verticalArrangement = Arrangement.spacedBy(11.dp)) {
             items(cues.size) { index ->
                 val cue = cues[index]

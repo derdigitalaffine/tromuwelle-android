@@ -662,7 +662,16 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             } else if (streamTab == StreamTab.HOME) {
                 Box(Modifier.fillMaxSize().padding(innerPadding)) {
                     StreamHome(session, recent.toList(), favorites.toSet(), current,
-                        onOpen = { openEntry(it) },
+                        onOpen = { item ->
+                            val target = when (item.kind) {
+                                EntryKind.TRACK, EntryKind.ARTIST, EntryKind.ALBUM -> LibrarySection.MUSIC
+                                EntryKind.RADIO -> LibrarySection.RADIO
+                                EntryKind.TV -> LibrarySection.TV
+                                else -> LibrarySection.MEDIA
+                            }
+                            switchSection(target)
+                            openEntry(item)
+                        },
                         onSection = { switchSection(it) },
                         onFavorites = { switchSection(LibrarySection.MUSIC); onlyFavorites = true },
                         onPodcasts = {
