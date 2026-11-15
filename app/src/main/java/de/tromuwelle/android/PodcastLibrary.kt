@@ -56,6 +56,13 @@ class TromuPodcasts(private val session: TromuwelleSession) {
         session.post("$root/refresh?feed_id=${session.query(feedId)}")
     }
     fun download(id: String) { session.post("$root/episodes/${session.query(id)}/download") }
+    fun status(): JSONObject = JSONObject(session.get("$root/status"))
+    fun settings(): JSONObject = JSONObject(session.get("$root/settings"))
+    fun updateSettings(retentionDays: Int, maxCacheMb: Int, deletePlayed: Boolean): JSONObject =
+        JSONObject(session.put("$root/settings", JSONObject()
+            .put("retention_days", retentionDays)
+            .put("max_cache_mb", maxCacheMb)
+            .put("delete_played", deletePlayed).toString()))
     fun progress(id: String, positionSeconds: Double, completed: Boolean = false) {
         session.put("$root/episodes/${session.query(id)}/progress",
             JSONObject().put("position", positionSeconds.coerceIn(0.0, 1_000_000.0))
@@ -120,6 +127,12 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
     var message by remember { mutableStateOf("") }
     var retry by remember { mutableIntStateOf(0) }
     var removeFeed by remember { mutableStateOf<JSONObject?>(null) }
+    var cacheSettingsOpen by remember { mutableStateOf(false) }
+    var cacheStatus by remember { mutableStateOf<JSONObject?>(null) }
+    var cacheLimit by remember { mutableStateOf("2048") }
+    var retention by remember { mutableStateOf("30") }
+    var deletePlayed by remember { mutableStateOf(false) }
+    var cacheError by remember { mutableStateOf("") }
 
     fun action(success: String, work: () -> Unit) {
         scope.launch {
@@ -163,6 +176,21 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
                 Text("${feeds.size} abonnierte Sendungen", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (session.account.isAdmin) IconButton(onClick = {
+                cacheSettingsOpen = true
+                scope.launch {
+                    cacheError = ""
+                    try {
+                        val data = withContext(Dispatchers.IO) { api.status() }
+                        cacheStatus = data
+                        cacheLimit = data.optInt("max_cache_mb", 2048).toString()
+                        retention = data.optInt("retention_days", 30).toString()
+                        deletePlayed = data.optBoolean("delete_played")
+                    } catch (e: Exception) {
+                        cacheError = e.message ?: "Cacheeinstellungen nicht erreichbar."
+                    }
+                }
+            }) { Icon(Icons.Rounded.Settings, contentDescription = "Podcast-Speicher verwalten") }
             IconButton(onClick = { action("Aktualisierung gestartet.") { api.refresh() } }) {
                 Icon(Icons.Rounded.Refresh, contentDescription = "Podcasts aktualisieren")
             }
@@ -357,6 +385,55 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
                 }
             }
         }
+    }
+    if (cacheSettingsOpen) {
+        AlertDialog(onDismissRequest = { cacheSettingsOpen = false },
+            title = { Text("Podcast-Speicher") },
+            text = {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val used = cacheStatus?.optLong("cache_bytes") ?: 0L
+                    Text("Docker-Volume: podcast_cache · ${"%.1f".format(used / 1048576.0)} MiB genutzt · " +
+                        "${cacheStatus?.optInt("cached_episodes") ?: 0} Folgen gespeichert",
+                        style = MaterialTheme.typography.bodySmall)
+                    if (cacheStatus?.optBoolean("storage_writable", true) == false)
+                        Text("Der Server-Podcast-Cache ist nicht beschreibbar.",
+                            color = MaterialTheme.colorScheme.error)
+                    OutlinedTextField(cacheLimit, { cacheLimit = it.filter(Char::isDigit).take(6) },
+                        label = { Text("Maximale Cachegröße (MB)") },
+                        supportingText = { Text("0 = unbegrenzt · bis 102400 MB") },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(retention, { retention = it.filter(Char::isDigit).take(5) },
+                        label = { Text("Aufbewahrung (Tage)") },
+                        supportingText = { Text("0 = keine automatische Löschung · bis 3650 Tage") },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = deletePlayed, onCheckedChange = { deletePlayed = it })
+                        Text("Gehörte Folgen aus Cache entfernen",
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (cacheError.isNotBlank()) Text(cacheError,
+                        color = MaterialTheme.colorScheme.error)
+                    Text("Nur der dedizierte Podcast-Cache wird bereinigt. Abonnements, " +
+                        "Transkripte und Hörstände bleiben in der Serverdatenbank.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }, confirmButton = {
+                Button(onClick = {
+                    val days = retention.toIntOrNull()
+                    val size = cacheLimit.toIntOrNull()
+                    if (days == null || days !in 0..3650 || size == null || size !in 0..102400) {
+                        cacheError = "Bitte gültige Zahlen für Tage und Cachegröße eingeben."
+                    } else {
+                        action("Podcast-Speichereinstellungen gespeichert.") {
+                            api.updateSettings(days, size, deletePlayed)
+                        }
+                        cacheSettingsOpen = false
+                    }
+                }) { Text("Speichern") }
+            }, dismissButton = {
+                TextButton(onClick = { cacheSettingsOpen = false }) { Text("Abbrechen") }
+            })
     }
     removeFeed?.let { feed ->
         AlertDialog(onDismissRequest = { removeFeed = null },
