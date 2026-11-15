@@ -33,17 +33,7 @@ class TromuwelleSession(private val application: Application) {
         private set
 
     /** Do not accept plain HTTP, URL credentials or paths that could reroute API calls. */
-    fun validateServer(input: String): String {
-        val uri = try { URI(input.trim().trimEnd('/')) } catch (e: Exception) {
-            throw IllegalArgumentException("Ungültige Serveradresse")
-        }
-        require(uri.scheme.equals("https", true) && uri.host != null &&
-            uri.userInfo == null && uri.query == null && uri.fragment == null &&
-            (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")) {
-            "Bitte eine HTTPS-Adresse ohne Pfad oder Zugangsdaten eingeben."
-        }
-        return "https://" + uri.rawAuthority
-    }
+    fun validateServer(input: String): String = normalizeServerAddress(input)
 
     fun login(inputServer: String, inputUsername: String, password: String) {
         require(password.isNotBlank()) { "Bitte das Passwort eingeben." }
