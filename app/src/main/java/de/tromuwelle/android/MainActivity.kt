@@ -228,6 +228,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var playbackStartMs by remember { mutableLongStateOf(0L) }
     var onlyFavorites by remember { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
+    var listingJob by remember { mutableStateOf<Job?>(null) }
 
     LaunchedEffect(connected, session.server, session.username) {
         favorites.clear(); recent.clear()
@@ -368,29 +369,40 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
 
     fun refresh(append: Boolean = false) {
         val token = ++loadToken
+        // A stale paginated/filtered request should neither consume bandwidth
+        // after switching tabs nor repopulate an unrelated media section.
+        listingJob?.cancel()
         val targetSection = section
         val targetBrowse = browse
         val targetArtist = artist
         val targetAlbum = album
         val targetFolder = folder
         val targetSearch = search.trim()
+        val targetAdultTag = adultTag
+        val targetMediaSort = if (section == LibrarySection.PRIVATE &&
+            mediaSort == "name") "newest" else mediaSort
+        val targetMediaHeight = mediaMinHeight
+        val targetMusicSort = musicSort
+        val targetMinBitrate = minBitrate
+        val targetOnlyLossless = onlyLossless
         val nextOffset = if (append) entries.size else 0
-        scope.launch {
+        listingJob = scope.launch {
             loading = true
             try {
                 val page = withContext(Dispatchers.IO) {
                     catalog.load(targetSection, targetSearch, targetFolder, targetBrowse, targetArtist, targetAlbum,
-                        nextOffset, adultTag, if (targetSection == LibrarySection.PRIVATE && mediaSort == "name")
-                            "newest" else mediaSort, mediaMinHeight,
-                        musicSort, minBitrate, onlyLossless)
+                        nextOffset, targetAdultTag, targetMediaSort, targetMediaHeight,
+                        targetMusicSort, targetMinBitrate, targetOnlyLossless)
                 }
-                if (token == loadToken) {
+                if (token == loadToken && connected) {
                     entries = if (append) entries + page.items else page.items
                     total = page.total
                     error = ""
                 }
+            } catch (exception: CancellationException) {
+                throw exception
             } catch (exception: Exception) {
-                if (token == loadToken) {
+                if (token == loadToken && connected) {
                     if ((exception as? ServerException)?.status == 401) {
                         connected = false
                         withContext(Dispatchers.IO) { session.logout() }
