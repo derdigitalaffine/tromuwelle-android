@@ -407,7 +407,8 @@ private data class HomeSnapshot(
     val movies: List<LibraryEntry> = emptyList(),
     val radio: List<LibraryEntry> = emptyList(),
     val tv: List<LibraryEntry> = emptyList(),
-    val podcasts: List<LibraryEntry> = emptyList()
+    val podcasts: List<LibraryEntry> = emptyList(),
+    val podcastEpisodes: List<org.json.JSONObject> = emptyList()
 )
 
 @Composable
@@ -415,7 +416,8 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                favorites: Set<String>, current: LibraryEntry?,
                onOpen: (LibraryEntry) -> Unit,
                onSection: (LibrarySection) -> Unit,
-               onPodcasts: () -> Unit) {
+               onPodcasts: () -> Unit,
+               onPodcast: (org.json.JSONObject) -> Unit) {
     var snapshot by remember(session.server, session.username) { mutableStateOf(HomeSnapshot()) }
     var loading by remember(session.server, session.username) { mutableStateOf(true) }
     var failed by remember(session.server, session.username) { mutableStateOf(false) }
@@ -430,34 +432,35 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
             val catalog = TromuwelleCatalog(session)
             var errors = 0
             fun safe(section: LibrarySection, browse: MusicBrowse = MusicBrowse.TRACKS,
-                     sort: String = "name"): List<LibraryEntry> =
-                try { catalog.load(section, browse = browse, sort = sort).items.take(18) }
+                     sort: String = "name", max: Int = 18): List<LibraryEntry> =
+                try { catalog.load(section, browse = browse, sort = sort).items.take(max) }
                 catch (_: Exception) { errors++; emptyList() }
+            val podcastItems = try {
+                TromuPodcasts(session).episodes(limit = 80).first
+            } catch (e: Exception) {
+                if (e !is ServerException || e.status !in listOf(403, 404)) errors++
+                emptyList()
+            }
             val s = HomeSnapshot(
                 albums = safe(LibrarySection.MUSIC, MusicBrowse.ALBUMS),
                 tracks = safe(LibrarySection.MUSIC),
                 movies = safe(LibrarySection.MEDIA, sort = "newest")
                     .filter { it.kind == EntryKind.FILE && !it.audio },
-                radio = safe(LibrarySection.RADIO),
-                tv = safe(LibrarySection.TV),
-                podcasts = try {
-                    TromuPodcasts(session).episodes(limit = 12).first.map { episode ->
-                        LibraryEntry(
-                            id = "podcast:" + episode.optString("id"),
-                            title = episode.optString("title"),
-                            description = episode.optString("feed_title"),
-                            kind = EntryKind.TRACK,
-                            duration = episode.optLong("duration"),
-                            artwork = episode.optString("image")
-                                .ifBlank { episode.optString("feed_image") }
-                                .takeIf { it.startsWith("https://") } ?: ""
-                        )
-                    }
-                } catch (e: Exception) {
-                    if (e !is ServerException || e.status !in listOf(403, 404))
-                        errors++
-                    emptyList()
-                }
+                radio = safe(LibrarySection.RADIO, max = 1500),
+                tv = safe(LibrarySection.TV, max = 250),
+                podcasts = podcastItems.map { episode ->
+                    LibraryEntry(
+                        id = "podcast:" + episode.optString("id"),
+                        title = episode.optString("title"),
+                        description = episode.optString("feed_title"),
+                        kind = EntryKind.TRACK,
+                        duration = episode.optLong("duration"),
+                        artwork = episode.optString("image")
+                            .ifBlank { episode.optString("feed_image") }
+                            .takeIf { it.startsWith("https://") } ?: ""
+                    )
+                },
+                podcastEpisodes = podcastItems
             )
             s to errors
         }
@@ -474,6 +477,11 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
         val pos = progressPrefs.getLong(key, 0L)
         pos > 30_000 && (entry.duration <= 0 || pos < entry.duration * 1000 - 20_000)
     }
+    val resumePodcastIds = snapshot.podcastEpisodes
+        .filter { it.optDouble("position") >= 30.0 &&
+            it.optInt("completed") == 0 && !it.optBoolean("completed") }
+        .map { "podcast:" + it.optString("id") }.toSet()
+    val continueListening = snapshot.podcasts.filter { it.id in resumePodcastIds }
     val featured = snapshot.movies.firstOrNull() ?: snapshot.albums.firstOrNull()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -566,9 +574,21 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                 onSection(LibrarySection.MEDIA)
             }
         }
+        if (continueListening.isNotEmpty()) item {
+            StreamRail("Podcasts weiterhören", continueListening, session,
+                onOpen = { card ->
+                    snapshot.podcastEpisodes.firstOrNull {
+                        "podcast:" + it.optString("id") == card.id
+                    }?.let(onPodcast) ?: onPodcasts()
+                }, onMore = onPodcasts)
+        }
         if (snapshot.podcasts.isNotEmpty()) item {
             StreamRail("Neue Podcastfolgen", snapshot.podcasts, session,
-                onOpen = { onPodcasts() }, onMore = onPodcasts)
+                onOpen = { card ->
+                    snapshot.podcastEpisodes.firstOrNull {
+                        "podcast:" + it.optString("id") == card.id
+                    }?.let(onPodcast) ?: onPodcasts()
+                }, onMore = onPodcasts)
         }
         if (recent.isNotEmpty()) item {
             StreamRail("Zuletzt gehört", recent, session, onOpen) { onSection(LibrarySection.RADIO) }
