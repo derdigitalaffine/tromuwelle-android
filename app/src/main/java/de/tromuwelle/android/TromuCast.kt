@@ -25,6 +25,8 @@ import com.google.android.gms.cast.framework.OptionsProvider
 import com.google.android.gms.cast.framework.SessionProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -74,6 +76,13 @@ fun CastOutputSheet(
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var connectedTick by remember { mutableIntStateOf(0) }
+    // Cast SDK updates sessions asynchronously after the platform route picker closes.
+    LaunchedEffect(cast) {
+        while (isActive) {
+            delay(1000)
+            connectedTick++
+        }
+    }
     val castSession = remember(cast, connectedTick) {
         cast?.sessionManager?.currentCastSession
     }
@@ -153,7 +162,7 @@ fun CastOutputSheet(
                                 val candidate = Uri.parse(optionalLan)
                                 val ip = candidate.host.orEmpty()
                                 val validIp = ip.matches(
-                                    Regex("(?:[0-9]{1,3}\\\\.){3}[0-9]{1,3}"))
+                                    Regex("""(?:[0-9]{1,3}\.){3}[0-9]{1,3}"""))
                                 require(candidate.scheme == "http" && candidate.port == 8098 &&
                                     candidate.encodedPath == rawPath && validIp) {
                                     "Ungültiger LAN-Cast-Link vom Server."
