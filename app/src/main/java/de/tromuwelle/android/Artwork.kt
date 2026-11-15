@@ -111,6 +111,8 @@ fun AuthenticatedArtwork(session: TromuwelleSession, entry: LibraryEntry,
                 // The server's thumb cache itself is versioned by mtime/size.
                 .memoryCachePolicy(CachePolicy.ENABLED)
                 .diskCachePolicy(CachePolicy.ENABLED)
+                .memoryCacheKey(session.artworkCacheTag + ":" + url + ":" + retries)
+                .diskCacheKey(session.artworkCacheTag + ":" + url)
                 .setParameter("attempt", retries, memoryCacheKey = null)
                 .build(),
             imageLoader = loader,

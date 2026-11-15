@@ -52,6 +52,14 @@ class TromuwelleSession(private val application: Application) {
     val artworkLoader by lazy {
         coil.ImageLoader.Builder(application).okHttpClient(client).build()
     }
+    // The shared loader is intentionally reused for performance, but a new
+    // session must not read another user's memory/disk cached private covers.
+    @Volatile var artworkCacheTag = java.util.UUID.randomUUID().toString()
+        private set
+
+    private fun rotateArtworkCacheTag() {
+        artworkCacheTag = java.util.UUID.randomUUID().toString()
+    }
 
     private val prefs = application.getSharedPreferences("connection", 0)
     private val vault = SecureSessionStore(application)
@@ -107,6 +115,7 @@ class TromuwelleSession(private val application: Application) {
     }
 
     private fun forgetLocal() {
+        rotateArtworkCacheTag()
         cookies.cookieStore.removeAll()
         vault.clear()
         restoredCookie = false
@@ -141,6 +150,7 @@ class TromuwelleSession(private val application: Application) {
         require(json.optBoolean("authenticated") && cookies.cookieStore.cookies.isNotEmpty()) {
             "Der Server hat keine gültige Sitzung ausgestellt."
         }
+        rotateArtworkCacheTag()
         server = origin
         username = name.trim()
         account = json.account(username)
