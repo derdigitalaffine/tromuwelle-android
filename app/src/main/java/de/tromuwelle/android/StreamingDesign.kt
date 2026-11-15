@@ -96,15 +96,21 @@ fun StreamScaffold(
     val configuration = LocalConfiguration.current
     val expandedNavigation = configuration.screenWidthDp >= 720 &&
         configuration.screenHeightDp >= 520
+    val compactPlayer = configuration.screenWidthDp < 400
     var playbackProgress by remember(player) { mutableFloatStateOf(0f) }
-    LaunchedEffect(player) {
+    LaunchedEffect(player, current?.id, isPlaying) {
+        if (player?.currentMediaItem == null) {
+            playbackProgress = 0f
+            return@LaunchedEffect
+        }
         while (isActive) {
-            val duration = player?.duration ?: -1L
-            val position = player?.currentPosition ?: 0L
-            playbackProgress = if (duration in 1..Long.MAX_VALUE)
+            val duration = player.duration
+            val position = player.currentPosition
+            playbackProgress = if (duration > 0L)
                 (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
                 else 0f
-            delay(600)
+            // Do not continually invalidate the entire bottom bar while paused.
+            delay(if (isPlaying) 850L else 2_000L)
         }
     }
     Scaffold(containerColor = MaterialTheme.colorScheme.background,
@@ -172,8 +178,13 @@ fun StreamScaffold(
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            IconButton(onClick = onOutput) {
-                                Icon(Icons.Rounded.Speaker, contentDescription = "Audioausgabe wählen")
+                            // Output selection also remains in the header;
+                            // on narrow phones prioritize legible track names.
+                            if (!compactPlayer) {
+                                IconButton(onClick = onOutput) {
+                                    Icon(Icons.Rounded.Speaker,
+                                        contentDescription = "Audioausgabe wählen")
+                                }
                             }
                             IconButton(onClick = {
                                 if (player?.isPlaying == true) player.pause() else player?.play()
