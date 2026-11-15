@@ -11,6 +11,8 @@ import org.json.JSONObject
 import okhttp3.CookieJar
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.FormBody
+import android.net.Uri
 import java.net.URI
 import java.net.URLEncoder
 import java.security.KeyStore
@@ -128,15 +130,17 @@ class SubsonicClient(val source: SubsonicSource) {
         val params = linkedMapOf("u" to source.user, "t" to md5(source.password + salt),
             "s" to salt, "v" to "1.16.1", "c" to "tromuwelle-android", "f" to "json")
         args.forEach { (k, v) ->
-            require(k.matches(Regex("[a-zA-Z][a-zA-Z0-9]*"))) { "Ungültiger Parameter." }
+            require(k.matches(Regex("[a-zA-Z][a-zA-Z0-9]*")) &&
+                k !in setOf("u", "t", "s", "v", "c", "f")) {
+                "Ungültiger oder reservierter Parameter."
+            }
             params[k] = v
         }
         return subsonicOrigin(source.address) + "/rest/" + operation + ".view?" +
             params.entries.joinToString("&") { encode(it.key) + "=" + encode(it.value) }
     }
 
-    fun call(operation: String, args: Map<String,String> = emptyMap()): JSONObject {
-        val request = Request.Builder().get().url(url(operation, args)).build()
+    private fun response(request: Request): JSONObject {
         http.newCall(request).execute().use { response ->
             require(response.isSuccessful) { "Musikserver HTTP " + response.code }
             val result = JSONObject(response.body?.string().orEmpty())
@@ -147,6 +151,45 @@ class SubsonicClient(val source: SubsonicSource) {
                 throw IllegalStateException(detail)
             }
             return result
+        }
+    }
+    fun call(operation: String, args: Map<String,String> = emptyMap()): JSONObject =
+        response(Request.Builder().get().url(url(operation, args)).build())
+
+    /** Mutations are POST requests; authentication remains token+salt. */
+    fun mutate(operation: String, args: List<Pair<String,String>>): JSONObject {
+        val body = FormBody.Builder().also { form ->
+            args.forEach { (key,value) ->
+                require(key.matches(Regex("[A-Za-z][A-Za-z0-9]*"))) { "Ungültiger Parameter." }
+                form.add(key, value)
+            }
+        }.build()
+        return response(Request.Builder().url(url(operation)).post(body).build())
+    }
+    fun createPlaylist(name: String) =
+        mutate("createPlaylist", listOf("name" to name))
+    fun deletePlaylist(id: String) =
+        mutate("deletePlaylist", listOf("id" to id))
+    fun addPlaylistSong(playlistId: String, songId: String) =
+        mutate("updatePlaylist", listOf("playlistId" to playlistId,
+            "songIdToAdd" to songId))
+    fun removePlaylistIndex(playlistId: String, index: Int) =
+        mutate("updatePlaylist", listOf("playlistId" to playlistId,
+            "songIndexToRemove" to index.toString()))
+    fun starSong(songId: String, starred: Boolean) =
+        mutate(if (starred) "star" else "unstar", listOf("id" to songId))
+    fun lyrics(songId: String) =
+        call("getLyricsBySongId", mapOf("id" to songId))
+    fun downloadTo(context: Context, songId: String, destination: Uri) {
+        val output = context.contentResolver.openOutputStream(destination)
+            ?: error("Datei kann nicht erstellt werden.")
+        output.use { target ->
+            val request = Request.Builder().get().url(url("download", mapOf("id" to songId))).build()
+            http.newCall(request).execute().use { response ->
+                require(response.isSuccessful) { "Download HTTP " + response.code }
+                val bytes = response.body?.byteStream() ?: error("Leere Datei.")
+                bytes.use { it.copyTo(target) }
+            }
         }
     }
     fun ping() = call("ping")
