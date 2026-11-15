@@ -149,6 +149,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var externalPage by remember { mutableStateOf(false) }
     var managementPage by remember { mutableStateOf(false) }
     var setupRequired by remember { mutableStateOf(false) }
+    var serverHasAccounts by remember { mutableStateOf<Boolean?>(null) }
     var setupToken by remember { mutableStateOf("") }
     var previousAdminPassword by remember { mutableStateOf("") }
     var adultTag by remember { mutableStateOf("") }
@@ -482,8 +483,15 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 OutlinedTextField(server, { server = it }, modifier = Modifier.fillMaxWidth(),
                     label = { Text("HTTPS-Serveradresse") }, placeholder = { Text("https://server:8097") },
                     singleLine = true)
+                CertificateTrustControl(address = server)
                 OutlinedTextField(username, { username = it }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Benutzername") }, singleLine = true)
+                    label = { Text("Benutzername (bei bisherigem Passwortmodus leer lassen)") },
+                    singleLine = true)
+                Text(when (serverHasAccounts) {
+                    true -> "Benutzerverwaltung aktiv: Kontonamen und Passwort eingeben."
+                    false -> "Bisheriger Passwortmodus: Es gibt noch keinen Benutzernamen. Feld leer lassen."
+                    null -> "Wenn bisher nur ein Passwort vergeben wurde, den Benutzernamen leer lassen."
+                }, style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(password, { password = it }, modifier = Modifier.fillMaxWidth(),
                     label = { Text("Passwort") }, visualTransformation = PasswordVisualTransformation(),
                     singleLine = true)
@@ -492,6 +500,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         try {
                             val status = withContext(Dispatchers.IO) { session.status(server) }
                             setupRequired = status.optBoolean("setup_required")
+                            serverHasAccounts = status.optBoolean("managed")
                             error = if (setupRequired) "Ersteinrichtung erforderlich: Administrator anlegen."
                                 else "Server erreichbar. Bitte anmelden."
                         } catch (e: Exception) { error = e.message ?: "Prüfung fehlgeschlagen." }
@@ -525,7 +534,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     }
                 }) { Text(if (connecting) "Verbinde …" else "Anmelden") }
                 if (connecting) LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("Für lokale HTTPS-Server muss das CA-Zertifikat auf diesem Gerät als vertrauenswürdig installiert sein.",
+                Text("Selbstsigniertes Zertifikat? Über „Zertifikat prüfen“ den SHA-256-Fingerabdruck " +
+                    "mit dem echten Server vergleichen und gezielt freigeben. " +
+                    "Alternativ kann das lokale CA-Zertifikat in Android installiert werden.",
                     style = MaterialTheme.typography.bodySmall)
                 if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
             }

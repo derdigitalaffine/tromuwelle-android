@@ -394,12 +394,15 @@ fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
     if (showEditor) AlertDialog(onDismissRequest = { showEditor = false },
         title = { Text(if(editingId.isBlank()) "Musikserver hinzufügen" else "Musikserver bearbeiten") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 500.dp).verticalScroll(
+                androidx.compose.foundation.rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Name") },
                     modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(address, { address = it },
                     label = { Text("HTTPS-URL (auch mit /subsonic möglich)") },
                     modifier = Modifier.fillMaxWidth())
+                CertificateTrustControl(address = address)
                 OutlinedTextField(username, { username = it }, label = { Text("Benutzername") },
                     modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(password, { password = it }, label = {
