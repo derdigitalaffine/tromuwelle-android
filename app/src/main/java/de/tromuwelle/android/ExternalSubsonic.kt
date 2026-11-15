@@ -114,9 +114,19 @@ class SubsonicSourceStore(private val context: Context) {
 
 /** HTTPS-only Subsonic v1.16.1 JSON transport with salted token auth. */
 class SubsonicClient(val source: SubsonicSource) {
-    private val http = TlsTrustRegistry.configure(OkHttpClient.Builder())
-        .cookieJar(CookieJar.NO_COOKIES)
-        .followRedirects(false).followSslRedirects(false).build()
+    companion object {
+        // Shared connection pool and dispatcher across all client facades.
+        // Every Subsonic request carries its own salted auth token; the HTTP
+        // transport itself holds no user cookies or reusable credentials.
+        private val sharedHttp: OkHttpClient by lazy {
+            TlsTrustRegistry.configure(OkHttpClient.Builder())
+                .cookieJar(CookieJar.NO_COOKIES)
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
+        }
+    }
+    private val http: OkHttpClient get() = sharedHttp
     private fun encode(s: String) = URLEncoder.encode(s, "UTF-8")
     private fun md5(value: String) = MessageDigest.getInstance("MD5")
         .digest(value.toByteArray(Charsets.UTF_8))
