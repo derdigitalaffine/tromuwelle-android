@@ -259,6 +259,134 @@ fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
             }
         }
     }
+    actionSong?.let { song ->
+        val server = selected
+        AlertDialog(onDismissRequest = { actionSong = null },
+            title = { Text(song.optString("title")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    TextButton(onClick = { lyricsSong = song; actionSong = null }) {
+                        Text("Liedtext anzeigen")
+                    }
+                    TextButton(onClick = {
+                        downloadSong = song
+                        actionSong = null
+                        downloadPicker.launch(song.optString("title").ifBlank { "song" } +
+                            "." + song.optString("suffix").ifBlank { "mp3" })
+                    }) { Text("Original herunterladen") }
+                    TextButton(onClick = {
+                        actionSong = null
+                        if (server != null) {
+                            playlistPickerSong = song
+                            scope.launch {
+                                try {
+                                    playlistTargets = withContext(Dispatchers.IO) {
+                                        SubsonicClient(server).playlists()
+                                    }
+                                } catch (e: Exception) { error = e.message ?: "Playlists nicht erreichbar." }
+                            }
+                        }
+                    }) { Text("Zu Playlist hinzufügen") }
+                    TextButton(onClick = {
+                        actionSong = null
+                        if (server != null) {
+                            val starred = song.optString("starred").isNotBlank()
+                            scope.launch {
+                                busy = true
+                                try {
+                                    withContext(Dispatchers.IO) {
+                                        SubsonicClient(server).starSong(song.optString("id"), !starred)
+                                    }
+                                    load()
+                                } catch (e: Exception) { error = e.message ?: "Favorit konnte nicht geändert werden." }
+                                finally { busy = false }
+                            }
+                        }
+                    }) { Text(if (song.optString("starred").isBlank()) "★ Als Favorit markieren" else "☆ Favorit entfernen") }
+                    if (section == "playlistTracks") {
+                        TextButton(onClick = {
+                            actionSong = null
+                            val index = rows.indexOfFirst { it === song }
+                            val id = playlistId
+                            if (server != null && index >= 0) {
+                                scope.launch {
+                                    busy = true
+                                    try {
+                                        withContext(Dispatchers.IO) {
+                                            SubsonicClient(server).removePlaylistIndex(id, index)
+                                        }
+                                        load()
+                                    } catch (e: Exception) { error = e.message ?: "Entfernen fehlgeschlagen." }
+                                    finally { busy = false }
+                                }
+                            }
+                        }) { Text("Aus dieser Playlist entfernen") }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { actionSong = null }) { Text("Schließen") } })
+    }
+    playlistPickerSong?.let { song ->
+        val server = selected
+        AlertDialog(onDismissRequest = { playlistPickerSong = null },
+            title = { Text("Playlist auswählen") },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(
+                    androidx.compose.foundation.rememberScrollState())) {
+                    playlistTargets.forEach { target ->
+                        TextButton(onClick = {
+                            playlistPickerSong = null
+                            if (server != null) {
+                                scope.launch {
+                                    busy = true
+                                    try {
+                                        withContext(Dispatchers.IO) {
+                                            SubsonicClient(server).addPlaylistSong(
+                                                target.optString("id"), song.optString("id"))
+                                        }
+                                        error = "Titel zur Playlist hinzugefügt."
+                                        load()
+                                    } catch (e: Exception) { error = e.message ?: "Hinzufügen fehlgeschlagen." }
+                                    finally { busy = false }
+                                }
+                            }
+                        }) { Text(target.optString("name")) }
+                    }
+                    if (playlistTargets.isEmpty()) Text("Keine Playlists vorhanden.")
+                }
+            },
+            confirmButton = { TextButton(onClick = { playlistPickerSong = null }) { Text("Schließen") } })
+    }
+    if (confirmPlaylistDelete) {
+        AlertDialog(onDismissRequest = { confirmPlaylistDelete = false },
+            title = { Text("Playlist endgültig löschen?") },
+            text = { Text("Die Playlist wird auf diesem Subsonic-Server entfernt. Songs bleiben erhalten.") },
+            confirmButton = {
+                Button(onClick = {
+                    confirmPlaylistDelete = false
+                    val server = selected
+                    val id = playlistId
+                    if (server != null) {
+                        section = "playlists"; playlistId = ""; playlistName = ""
+                        scope.launch {
+                            busy = true
+                            try {
+                                withContext(Dispatchers.IO) { SubsonicClient(server).deletePlaylist(id) }
+                                load()
+                            } catch (e: Exception) { error = e.message ?: "Löschen fehlgeschlagen." }
+                            finally { busy = false }
+                        }
+                    }
+                }) { Text("Löschen") }
+            }, dismissButton = {
+                TextButton(onClick = { confirmPlaylistDelete = false }) { Text("Abbrechen") }
+            })
+    }
+    lyricsSong?.let { song ->
+        val server = selected
+        if (server != null) ExternalSubsonicLyricsDialog(server, song, player,
+            onClose = { lyricsSong = null })
+    }
     if (showEditor) AlertDialog(onDismissRequest = { showEditor = false },
         title = { Text(if(editingId.isBlank()) "Musikserver hinzufügen" else "Musikserver bearbeiten") },
         text = {
