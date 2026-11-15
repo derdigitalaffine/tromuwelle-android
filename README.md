@@ -25,11 +25,11 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 5. Bei bisher völlig unkonfiguriertem Server „Server / Ersteinrichtung prüfen“ und anschließend Administrator mit mindestens 12-stelligem Passwort und Setup-Token anlegen. Bei aktivem bisherigen Passwortschutz reicht zur Migration das **bestehende Administrationspasswort** (anstelle eines Tokens); neuer Benutzername und neues Passwort werden selbst gewählt.
 6. Bei gültiger Session stellt die App den Login beim nächsten Start automatisch wieder her; der Server bestätigt zuvor die aktuelle Berechtigung.
 
-## APK – v0.3.1-beta.1
+## APK – v0.3.2-beta.1
 
 Es gibt zwei separat installierbare Varianten:
-- **`tromuwelle-android-v0.3.1-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
-- **`tromuwelle-automotive-video-v0.3.1-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
+- **`tromuwelle-android-v0.3.2-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
+- **`tromuwelle-automotive-video-v0.3.2-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
 
 Video auf Android Auto ist **nicht** verfügbar. Dieser Unterschied ist eine Plattformbeschränkung, kein fehlender Schalter. Diese APKs verwenden unterschiedliche Anwendungs-IDs; die AAOS-Version ersetzt nicht die Handy-Version.
 
@@ -84,3 +84,19 @@ Wichtig für Installationen: Bestehende Beta-Versionen sind mit wechselnden GitH
 - Die anfängliche Zertifikats-Inspektion öffnet nur eine TLS-Verbindung und liest das öffentliche Zertifikat, **ohne HTTP-Aufruf oder Passwörter**. Sie beweist für sich allein **nicht**, dass der Server echt ist – Fingerprint vor Zustimmung unabhängig prüfen.
 - Gespeicherte Zertifikatsfingerabdrücke sind nicht geheim; Zertifikatstrust kann im jeweiligen Verbindungsdialog wieder entzogen werden. Beim Serverzertifikatswechsel ist eine neue Freigabe erforderlich.
 - Für langlebige Caddy-Installationen den CA-Weg wählen, weil Zertifikatswechsel bei einzeln gepinnten Leaf-Zertifikaten bewusst eine neue Freigabe verlangen.
+
+### Hotfix v0.3.2-beta.1: TLS-Handshake-Fehler
+
+Die Fehler `TLS1_ALERT_INTERNAL_ERROR`, `0A000438` und `100000438` sind **serverseitige TLS-Alerts**. Sie bedeuten nicht zwingend, dass ein selbstsigniertes Zertifikat falsch ist. Die App unterscheidet solche Server-Handshake-Fehler jetzt ausdrücklich von eigentlichen CA-/Zertifikatsvertrauensfehlern. Zusätzlich zu normalen Anmeldefehlern wird auch im Zertifikats-Inspektionsdialog die Ursache in verständlichem Deutsch angezeigt.
+
+Beim privaten Tromuwelle-Server kann das vorkommen, wenn der Client über eine IP-Adresse ohne TLS-SNI zugreift und Caddy kein Zertifikat auswählen kann. Das Hauptrepo enthält deshalb ab dem Server-Commit `8d9de1dc` einen SNI-Fallback auf die konfigurierte Zertifikats-IP. Nach dem Server-Update **Caddy neu starten**; die Android-App kann diesen Serverfehler nicht allein korrigieren:
+
+```bash
+cd /docker/tromuwelle
+git pull
+docker compose restart https
+curl -vk https://192.168.101.161:8097/api/auth/status
+```
+
+IP/Port bei angepasster Installation ersetzen. Der Status-Endpunkt verrät keine Zugangsdaten; ein `curl -k`-Erfolg beweist nicht die Vertrauenswürdigkeit des Zertifikats. Anschließend in Android das Zertifikat anhand eines unabhängig geprüften SHA-256-Fingerabdrucks freigeben oder die Caddy-CA installieren. Keine pauschale TLS-Deaktivierung.
+

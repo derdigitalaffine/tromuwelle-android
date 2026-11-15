@@ -89,3 +89,11 @@ Die Zeilen mit „Ja“ bezeichnen **implementierte Funktionswege**, nicht eine 
 | Lokale private CA bei automatischer Leaf-Erneuerung | Via Android-Benutzer-CA | In-App-CA-Import steht nicht zur Verfügung; Android-Einstellungen verwenden |
 
 **Offen:** Die neue Zertifikatsfreigabe ist auf realen Android-Versionen und mit einem konkreten Caddy-Server/Zertifikatswechsel zu testen. Sie ersetzt keine unabhängige Verifizierung des ersten Fingerabdrucks.
+
+## TLS-Handshake-Hotfix v0.3.2-beta.1
+
+- Neue Fehlerklassifikation `tlsConnectionDiagnostic` für `TLS1_ALERT_INTERNAL_ERROR` / `0A000438` und Android-BoringSSL-Code `100000438`, getrennt von `certificate verify failed` / unbekannter CA und `connection refused`.
+- Login, Serverprüfung, Zertifikatsinspektion und externe Subsonic-Verbindung zeigen den Nutzerinnen und Nutzern umsetzbare Hinweise, statt einen TLS-Alert fälschlich als Passwort- oder Vertrauensfehler auszulegen.
+- Serverseitiger Gegenpart: Hauptrepo Caddyfile `default_sni` mit `TROMUWELLE_CERT_IP`; muss auf dem **laufenden** Server übernommen und neu gestartet werden.
+- Keine unsicheren Verbindungen, keine globale `trustAll`-Ausnahme. Die optionale Zertifikatsfreigabe bleibt explizit und auf SHA-256-Fingerabdruck begrenzt.
+- Neuer JVM-Test `TlsConnectionDiagnosticTest` deckt OpenSSL- und Android-Fehlerbezeichnungen ab.
