@@ -20,6 +20,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -28,9 +29,20 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /** Explicit 18+ searches stay inside the protected library, never in this UI. */
-private enum class SearchScope(val label: String) {
+internal enum class SearchScope(val label: String) {
     ALL("Alles"), MUSIC("Musik"), MEDIA("Filme"), PODCAST("Podcasts"),
     RADIO("Radio"), TV("Live-TV")
+}
+
+/** Keep the protected private library out of global search, even with ALL selected. */
+internal fun sectionsForSearchScope(scope: SearchScope): List<LibrarySection> = when (scope) {
+    SearchScope.ALL -> listOf(LibrarySection.MUSIC, LibrarySection.MEDIA,
+        LibrarySection.RADIO, LibrarySection.TV)
+    SearchScope.MUSIC -> listOf(LibrarySection.MUSIC)
+    SearchScope.MEDIA -> listOf(LibrarySection.MEDIA)
+    SearchScope.RADIO -> listOf(LibrarySection.RADIO)
+    SearchScope.TV -> listOf(LibrarySection.TV)
+    SearchScope.PODCAST -> emptyList()
 }
 
 @Composable
@@ -82,7 +94,7 @@ fun StreamGlobalSearch(
         submitted = if (clean.length >= 2) clean else ""
     }
 
-    LaunchedEffect(session.server, session.username, submitted) {
+    LaunchedEffect(session.server, session.username, submitted, scope) {
         val term = submitted
         if (term.length < 2) {
             results = emptyMap()
@@ -91,13 +103,19 @@ fun StreamGlobalSearch(
             loading = false
             return@LaunchedEffect
         }
+        // Do not display results from the preceding query or scope while new
+        // requests are running. This also avoids short-lived wrong hit counts.
+        results = emptyMap()
+        podcasts = emptyList()
+        failed = emptyList()
         loading = true
         try {
             val fetched = withContext(Dispatchers.IO) {
                 coroutineScope {
                     val catalog = TromuwelleCatalog(session)
-                    val sections = listOf(LibrarySection.MUSIC, LibrarySection.MEDIA,
-                        LibrarySection.RADIO, LibrarySection.TV)
+                    // A selected media filter must not trigger four unrelated
+                    // API calls. This matters on slow home servers and mobile data.
+                    val sections = sectionsForSearchScope(scope)
                     val requests = sections.map { section ->
                         async {
                             try {
@@ -105,6 +123,8 @@ fun StreamGlobalSearch(
                                     rankSearchResults(
                                         catalog.load(section, search = term).items.take(30), term
                                     ).take(18), null as String?)
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Exception) {
                                 val notAvailable = (e as? ServerException)?.status in listOf(403, 404)
                                 Triple(section, emptyList<LibraryEntry>(),
@@ -112,7 +132,8 @@ fun StreamGlobalSearch(
                             }
                         }
                     }
-                    val podcastRequest = async {
+                    val podcastRequest = if (scope == SearchScope.ALL ||
+                        scope == SearchScope.PODCAST) async {
                         try {
                             val items = TromuPodcasts(session)
                                 .episodes(search = term, limit = 24).first
@@ -121,13 +142,15 @@ fun StreamGlobalSearch(
                                     it.optString("feed_title"), term)
                             }.thenBy { it.optString("title") })
                             sorted to null
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             val unavailable = (e as? ServerException)?.status in listOf(403, 404)
                             emptyList<JSONObject>() to if (unavailable) null else "Podcasts"
                         }
-                    }
+                    } else null
                     val ordinary = requests.awaitAll()
-                    val podcastResult = podcastRequest.await()
+                    val podcastResult = podcastRequest?.await() ?: (emptyList<JSONObject>() to null)
                     Triple(ordinary.associate { it.first to it.second },
                         podcastResult.first,
                         ordinary.mapNotNull { it.third } + listOfNotNull(podcastResult.second))
@@ -136,6 +159,8 @@ fun StreamGlobalSearch(
             results = fetched.first
             podcasts = fetched.second
             failed = fetched.third
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             failed = listOf(e.message ?: "Suche konnte nicht geladen werden.")
             results = emptyMap()
@@ -145,15 +170,7 @@ fun StreamGlobalSearch(
         }
     }
 
-    val shownSections = when (scope) {
-        SearchScope.ALL -> listOf(LibrarySection.MUSIC, LibrarySection.MEDIA,
-            LibrarySection.RADIO, LibrarySection.TV)
-        SearchScope.MUSIC -> listOf(LibrarySection.MUSIC)
-        SearchScope.MEDIA -> listOf(LibrarySection.MEDIA)
-        SearchScope.RADIO -> listOf(LibrarySection.RADIO)
-        SearchScope.TV -> listOf(LibrarySection.TV)
-        SearchScope.PODCAST -> emptyList()
-    }
+    val shownSections = sectionsForSearchScope(scope)
     val showPodcasts = scope == SearchScope.ALL || scope == SearchScope.PODCAST
     val count = shownSections.sumOf { results[it]?.size ?: 0 } +
         (if (showPodcasts) podcasts.size else 0)
