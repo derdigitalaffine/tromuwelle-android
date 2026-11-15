@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -30,6 +31,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -524,15 +527,25 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     }
 
     if (!connected) {
-        Column(Modifier.fillMaxSize()) {
-            Surface(color = MaterialTheme.colorScheme.primaryContainer) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)) {
-                    Text("Tromuwelle", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Text("Deine Medien. Dein Server.", style = MaterialTheme.typography.bodySmall)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box(Modifier.fillMaxWidth().height(186.dp)
+                .background(Brush.linearGradient(listOf(
+                    Color(0xFF123C38), Color(0xFF24264F), Color(0xFF121722))))) {
+                Column(Modifier.align(Alignment.BottomStart).padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("TROMUWELLE", style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Black)
+                    Text("Musik. Filme. Podcasts. Radio. Live-TV.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFD3E2EF))
+                    Text("Alles auf deinem Server.", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary)
                 }
             }
-            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Mit dem Server verbinden", style = MaterialTheme.typography.titleLarge)
+            Column(Modifier.fillMaxWidth().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("Mit deinem Server verbinden",
+                    fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(server, { server = it }, modifier = Modifier.fillMaxWidth(),
                     label = { Text("HTTPS-Serveradresse") }, placeholder = { Text("https://server:8097") },
                     singleLine = true)
@@ -640,7 +653,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     StreamPodcasts(session, onBack = { podcastsOpen = false },
                         onPlay = { episode ->
                             try {
-                                val ctl = player ?: error("Player wird gestartet, bitte erneut versuchen.")
+                                val ctl = player ?: throw IllegalStateException("Player wird gestartet, bitte erneut versuchen.")
                                 val media = TromuPodcasts(session).mediaItem(episode)
                                 ctl.setMediaItem(media)
                                 ctl.prepare()
