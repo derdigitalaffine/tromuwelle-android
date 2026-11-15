@@ -162,3 +162,13 @@ Offen: echte Gerätetests, Podcast-E2E mit einem realen Feed, SNI/Caddy-TLS mit 
 - Reuse eines TLS-geprüften OkHttp-Clients für alle Subsonic-Netzwerkanfragen (ohne Cookies) sowie Coil-Request-Memoization mit credential-abhängigen URL-Schlüsseln.
 - Media3 Player-Control mit zugänglichen Material-Icons, aktualisiertem Statuslistener, interaktivem Scrubbing und ruhigerem Polling bei Pause.
 - CI: Mobile und Automotive Unit-Tests, Lints und APKs; kein realer Geräte- oder Streaming-Langzeittest.
+
+## v0.6.3-beta.1: Player-Recovery und Ressourcen
+
+- Radio: transient-only Retry bei Netzwerkausfällen, ausgewählten HTTP-5xx/429 mit bounded backoff; keine automatischen Retries bei 401/403/404 oder Codecfehlern
+- Playback-Generation verhindert verspätete Film-Metadaten-/Untertitelantworten nach Titel- oder Kontowechsel; Radio-Retry-Jobs werden auf neuer Session/Titelauswahl gecancelt
+- Globale Musiksuche garantiert valide Queue für Treffer, die noch nicht zur aktuellen Musikliste gehören
+- Bibliotheksabruf cancelt superseded Jobs und verwendet unveränderliche Filter-Snapshots
+- Podcast-Progress und Resume-Preferences schreiben nur bei signifikanten Änderungen, Audio-Mini-Player pollt langsamer bei Pause
+- Mobile Audio-Sheet zeigt Radiofehler und erneuten Versuch; reduzierte Artwork-Höhe auf kurzen Displays
+- JVM-Regression für Fehlerklassifikation, Playlist-/Radio-Generationsabgleich und Progress-Schreibschwellen; Realgerät- und Server-Dauertests offen

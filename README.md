@@ -4,6 +4,18 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 
 **Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (laufender API-Abgleich mit dem aktuellen privaten Tromuwelle-Server).
 
+## v0.6.3-beta.1 – Playback-Robustheit, gezielter Reconnect und effiziente Fortschritte
+
+**Radio-Stabilität:** Die Wiederverbindung versucht bei echten Netzwerkfehlern und vorübergehenden HTTP-Serverfehlern höchstens dreimal mit kontrollierter Pause. Permanente Probleme wie HTTP 401/403/404 oder Decoderfehler lösen keine Endlosschleife aus. Ein beim Senderwechsel, Abmelden oder Player-Schließen bereits geplanter Neustart darf die aktuelle Wiedergabe nicht übernehmen. Im Audio-Player werden Fehler und ein manueller erneuter Versuch für Radio angezeigt.
+
+**Sichere Medienwechsel:** Videometadaten und Untertitel werden weiterhin asynchron geladen, können aber nach einem Wechsel zu Musik, Podcast, anderem Film oder anderem Account nicht mehr einen neuen Titel überschreiben. Treffer aus der globalen Musiksuche werden auch dann zuverlässig abgespielt, wenn das eigentliche Musikverzeichnis noch nicht geladen wurde; es wird eine gültige Einzel-Titel-Queue verwendet.
+
+**NAS-/Mobil-Performance:** Die Medienbibliothek bricht veraltete Such- und Filterladevorgänge ab und übergibt pro Request eingefrorene Filterwerte. Hörpositionen werden nur bei sinnvollen Änderungen gespeichert. Podcast-Fortschritt wird alle zwölf Sekunden geprüft und nur bei verändertem Stand oder Abschluss an den Server gemeldet, statt alle fünf Sekunden identische Daten zu schicken. Der Mini-Player reduziert Aktualisierungen im Ruhezustand.
+
+**Mobile-UX:** Eine lesbare Radio-Fehleranzeige direkt im Player, kompakteres Cover auf kurzen Displays und mehr Platz für Songtitel in schmalen Mini-Playern.
+
+**Tests/Grenzen:** Regressionstests für Retry-Beschränkungen, HTTP-Fehler, generierte Medienwechsel und Positionsschwellen. Android-CI kompiliert und lintet beide Flavors und erzeugt Debug-APKs. Echte Langzeittests mit instabilem WLAN/LTE, privaten Zertifikaten, Chromecast und Automotive stehen weiter aus.
+
 ## v0.6.2-beta.1 – externe Musikserver und Player verbessert
 
 **Externe Subsonic-Bibliotheken:** Bei schnellen Wechseln zwischen Servern, Alben, Playlists und Suchanfragen werden vorherige Ladevorgänge abgebrochen und verspätete Antworten verworfen. Die Liste löscht beim Wechsel ihre veralteten Treffer, bietet automatische Suche mit kurzer Tipp-Pause, eine klare Aktualisieren-Schaltfläche und eine verständliche Kennzeichnung der Zufallstitelauswahl. Cover und Zeilen sind kompakter, einzeilig und besser bedienbar.

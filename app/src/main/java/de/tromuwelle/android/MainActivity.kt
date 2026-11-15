@@ -47,6 +47,9 @@ import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerView
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import androidx.media3.datasource.HttpDataSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.json.JSONObject
@@ -213,6 +216,10 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var queueEntries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
     var isPlaying by remember { mutableStateOf(false) }
     var radioRetries by remember { mutableIntStateOf(0) }
+    // Every playback switch invalidates pending radio reconnects and async
+    // movie-subtitle lookups. They must never replace a newly selected track.
+    var playbackGeneration by remember { mutableIntStateOf(0) }
+    var radioRetryJob by remember { mutableStateOf<Job?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
     var videoDetail by remember { mutableStateOf(false) }
     var compatible by remember { mutableStateOf(false) }
@@ -221,6 +228,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var playbackStartMs by remember { mutableLongStateOf(0L) }
     var onlyFavorites by remember { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
+    var listingJob by remember { mutableStateOf<Job?>(null) }
 
     LaunchedEffect(connected, session.server, session.username) {
         favorites.clear(); recent.clear()
@@ -231,28 +239,51 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 .split("|").filter { it.isNotBlank() })
         }
     }
-    LaunchedEffect(player) {
+    LaunchedEffect(player, connected, session.server, session.username) {
+        var lastResumeId = ""
+        var lastResumeMs = -1L
+        var lastPodcastId = ""
+        var lastPodcastMs = -1L
+        var lastPodcastCompleted = false
         while (isActive) {
-            delay(5000)
-            val item = player?.currentMediaItem
+            // Slow servers don't need twelve progress writes per minute per
+            // player. Skip completely while logged out or without media.
+            delay(12_000L)
+            val controller = player ?: continue
+            if (!connected) continue
+            val item = controller.currentMediaItem ?: continue
+            val mediaId = item.mediaId
             val episode = activePodcast
-            if (connected && episode != null && item?.mediaId ==
-                "PODCAST:" + episode.optString("id") && player != null) {
-                val seconds = player.currentPosition.coerceAtLeast(0L) / 1000.0
-                val finished = player.playbackState == Player.STATE_ENDED ||
+            if (episode != null && mediaId == "PODCAST:" + episode.optString("id")) {
+                val positionMs = controller.currentPosition.coerceAtLeast(0L)
+                val seconds = positionMs / 1000.0
+                val completed = controller.playbackState == Player.STATE_ENDED ||
                     (episode.optDouble("duration") > 0 &&
-                    seconds >= episode.optDouble("duration") - 12)
-                try {
-                    withContext(Dispatchers.IO) {
-                        TromuPodcasts(session).progress(episode.optString("id"), seconds, finished)
-                    }
-                } catch (_: Exception) { /* Progress retries at the next interval. */ }
+                        seconds >= episode.optDouble("duration") - 12)
+                if (shouldPersistPlaybackPosition(mediaId, lastPodcastId,
+                        positionMs, lastPodcastMs) || (completed && !lastPodcastCompleted)) {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            TromuPodcasts(session).progress(
+                                episode.optString("id"), seconds, completed)
+                        }
+                        lastPodcastId = mediaId
+                        lastPodcastMs = positionMs
+                        lastPodcastCompleted = completed
+                    } catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { /* Retry at the next meaningful progress change. */ }
+                }
             }
-            if (connected && item != null && item.mediaId.isNotBlank() &&
-                !item.mediaId.startsWith("TV:") && !item.mediaId.startsWith("RADIO:")) {
-                val pos = player.currentPosition + playbackStartMs
-                if (pos > 1000) prefs.edit().putLong("resume:" + session.server + ":" +
-                    session.username + ":" + item.mediaId, pos).apply()
+            if (mediaId.isNotBlank() && !mediaId.startsWith("TV:") &&
+                !mediaId.startsWith("RADIO:")) {
+                val position = controller.currentPosition + playbackStartMs
+                if (shouldPersistPlaybackPosition(mediaId, lastResumeId,
+                        position, lastResumeMs)) {
+                    prefs.edit().putLong("resume:" + session.server + ":" +
+                        session.username + ":" + mediaId, position).apply()
+                    lastResumeId = mediaId
+                    lastResumeMs = position
+                }
             }
         }
     }
@@ -295,15 +326,26 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(value: Boolean) { isPlaying = value }
+            override fun onIsPlayingChanged(value: Boolean) {
+                isPlaying = value
+                if (value) playbackError = ""
+            }
             override fun onPlayerError(errorValue: androidx.media3.common.PlaybackException) {
                 playbackError = errorValue.localizedMessage ?: "Wiedergabe fehlgeschlagen"
-                if (connected && current?.kind == EntryKind.RADIO && radioRetries < 3) {
-                    val retryDelay = listOf(1200L, 3500L, 9000L)[radioRetries]
+                val mediaId = player?.currentMediaItem?.mediaId.orEmpty()
+                val httpStatus = (errorValue.cause as?
+                    HttpDataSource.InvalidResponseCodeException)?.responseCode
+                val retryDelay = radioRetryDelayMs(
+                    errorValue.errorCode, httpStatus, radioRetries)
+                if (connected && current?.kind == EntryKind.RADIO &&
+                    mediaId == "RADIO:" + current?.id && retryDelay != null) {
                     radioRetries++
-                    scope.launch {
+                    val generation = playbackGeneration
+                    radioRetryJob?.cancel()
+                    radioRetryJob = scope.launch {
                         delay(retryDelay)
-                        if (connected && current?.kind == EntryKind.RADIO) {
+                        if (playbackRequestIsCurrent(generation, playbackGeneration,
+                                mediaId, player?.currentMediaItem?.mediaId, connected)) {
                             player?.prepare()
                             player?.play()
                         }
@@ -327,29 +369,40 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
 
     fun refresh(append: Boolean = false) {
         val token = ++loadToken
+        // A stale paginated/filtered request should neither consume bandwidth
+        // after switching tabs nor repopulate an unrelated media section.
+        listingJob?.cancel()
         val targetSection = section
         val targetBrowse = browse
         val targetArtist = artist
         val targetAlbum = album
         val targetFolder = folder
         val targetSearch = search.trim()
+        val targetAdultTag = adultTag
+        val targetMediaSort = if (section == LibrarySection.PRIVATE &&
+            mediaSort == "name") "newest" else mediaSort
+        val targetMediaHeight = mediaMinHeight
+        val targetMusicSort = musicSort
+        val targetMinBitrate = minBitrate
+        val targetOnlyLossless = onlyLossless
         val nextOffset = if (append) entries.size else 0
-        scope.launch {
+        listingJob = scope.launch {
             loading = true
             try {
                 val page = withContext(Dispatchers.IO) {
                     catalog.load(targetSection, targetSearch, targetFolder, targetBrowse, targetArtist, targetAlbum,
-                        nextOffset, adultTag, if (targetSection == LibrarySection.PRIVATE && mediaSort == "name")
-                            "newest" else mediaSort, mediaMinHeight,
-                        musicSort, minBitrate, onlyLossless)
+                        nextOffset, targetAdultTag, targetMediaSort, targetMediaHeight,
+                        targetMusicSort, targetMinBitrate, targetOnlyLossless)
                 }
-                if (token == loadToken) {
+                if (token == loadToken && connected) {
                     entries = if (append) entries + page.items else page.items
                     total = page.total
                     error = ""
                 }
+            } catch (exception: CancellationException) {
+                throw exception
             } catch (exception: Exception) {
-                if (token == loadToken) {
+                if (token == loadToken && connected) {
                     if ((exception as? ServerException)?.status == 401) {
                         connected = false
                         withContext(Dispatchers.IO) { session.logout() }
@@ -418,6 +471,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         }
     }
     fun playItem(entry: LibraryEntry, fromSeconds: Long = 0L) {
+        ++playbackGeneration
+        radioRetryJob?.cancel()
+        activePodcast = null
         val controller = player ?: run {
             playbackError = "Player wird verbunden. Bitte erneut versuchen."
             return
@@ -429,25 +485,35 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             val useTranscode = compatible && entry.kind == EntryKind.FILE && !entry.audio
             val startSeconds = if (useTranscode) fromSeconds.takeIf { it > 0 } ?: (saved / 1000) else 0L
             playbackStartMs = if (useTranscode) startSeconds * 1000 else 0L
-            val queue = if (entry.kind == EntryKind.TRACK) entries.filter { it.kind == EntryKind.TRACK }
-                .map { it.mediaItem(session) } else listOf(entry.mediaItem(session, compatible, quality, startSeconds, radioBitrate, radioCodec))
-            queueEntries = if (entry.kind == EntryKind.TRACK)
-                entries.filter { it.kind == EntryKind.TRACK } else listOf(entry)
+            // A global-search hit can be opened before its library page loads.
+            // Always include the requested track rather than starting an empty
+            // or unrelated previous-section queue.
+            val visibleTracks = entries.filter { it.kind == EntryKind.TRACK }
+            val chosenTracks = if (entry.kind == EntryKind.TRACK &&
+                visibleTracks.any { it.id == entry.id }) visibleTracks else listOf(entry)
+            val queue = if (entry.kind == EntryKind.TRACK)
+                chosenTracks.map { it.mediaItem(session) }
+                else listOf(entry.mediaItem(session, compatible, quality, startSeconds, radioBitrate, radioCodec))
+            queueEntries = if (entry.kind == EntryKind.TRACK) chosenTracks else listOf(entry)
             val position = if (entry.kind == EntryKind.TRACK)
-                entries.filter { it.kind == EntryKind.TRACK }.indexOf(entry).coerceAtLeast(0) else 0
+                chosenTracks.indexOfFirst { it.id == entry.id }.coerceAtLeast(0) else 0
             val closeToEnd = entry.duration > 0 && saved >= entry.duration * 1000 - 30_000
             val resume = if (useTranscode || closeToEnd) 0L else saved
             if (entry.kind == EntryKind.FILE && !entry.audio) {
+                val generation = playbackGeneration
                 scope.launch {
                     val item = try {
                         val metadata = withContext(Dispatchers.IO) {
                             TromuwelleApi(session).mediaMetadata(entry.path)
                         }
                         mediaWithSidecarSubtitles(session, queue[0], entry.path, metadata)
-                    } catch (_: Exception) { queue[0] }
-                    controller.setMediaItems(listOf(item), 0, resume.coerceAtLeast(0L))
-                    controller.prepare()
-                    controller.play()
+                    } catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { queue[0] }
+                    if (generation == playbackGeneration && connected) {
+                        controller.setMediaItems(listOf(item), 0, resume.coerceAtLeast(0L))
+                        controller.prepare()
+                        controller.play()
+                    }
                 }
             } else {
                 controller.setMediaItems(queue, position, resume.coerceAtLeast(0L))
@@ -472,6 +538,10 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
 
     /** Same podcast playback flow for search, home and the subscribed-episodes view. */
     fun playPodcastEpisode(episode: JSONObject) {
+        ++playbackGeneration
+        radioRetryJob?.cancel()
+        radioRetries = 0
+        playbackStartMs = 0L
         try {
             val ctl = player ?: throw IllegalStateException("Player wird gestartet. Bitte erneut versuchen.")
             val item = TromuPodcasts(session).mediaItem(episode)
@@ -543,6 +613,11 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     val items = songs.map { client.mediaItem(it) }
                     val chosen = index.coerceIn(0, (items.size - 1).coerceAtLeast(0))
                     if (items.isNotEmpty() && player != null) {
+                        ++playbackGeneration
+                        radioRetryJob?.cancel()
+                        radioRetries = 0
+                        activePodcast = null
+                        currentPrivate = false
                         queueEntries = songs.map { item ->
                             LibraryEntry("ext:" + source.id + ":" + item.optString("id"),
                                 item.optString("title"), source.name + " · " + item.optString("artist"),
@@ -569,6 +644,11 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             onPlay = { tracks ->
                 val controller = player
                 if (controller != null && tracks.isNotEmpty()) {
+                    ++playbackGeneration
+                    radioRetryJob?.cancel()
+                    radioRetries = 0
+                    activePodcast = null
+                    currentPrivate = false
                     queueEntries = tracks
                     controller.setMediaItems(tracks.map { it.mediaItem(session) })
                     controller.prepare()
@@ -583,7 +663,10 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     }
     if (connected && accountPage) {
         AccountScreen(session, onBack = { accountPage = false }, onSessionRevoked = {
+            ++playbackGeneration
+            radioRetryJob?.cancel()
             player?.stop(); player?.clearMediaItems(); current = null
+            activePodcast = null; currentPrivate = false
             connected = false; accountPage = false
         })
         return
@@ -705,8 +788,10 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             onPlayer = { audioSheetOpen = true },
             onVideo = { videoDetail = true },
             onClosePlayer = {
+                ++playbackGeneration
+                radioRetryJob?.cancel()
                 player?.stop(); player?.clearMediaItems()
-                current = null; currentPrivate = false
+                current = null; currentPrivate = false; activePodcast = null
                 playbackError = ""; audioSheetOpen = false
             }
         ) { innerPadding ->
@@ -1119,7 +1204,10 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 HorizontalDivider()
                 TextButton(onClick = {
                     profileOpen = false
+                    ++playbackGeneration
+                    radioRetryJob?.cancel()
                     player?.stop(); player?.clearMediaItems(); current = null
+                    activePodcast = null; currentPrivate = false
                     scope.launch {
                         withContext(Dispatchers.IO) { session.logout() }
                         connected = false; streamTab = StreamTab.HOME
@@ -1139,7 +1227,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     .orEmpty().ifBlank { current?.title.orEmpty() }
                 // The media itself is the focus; controls sit below the art
                 // instead of putting a tall text-heavy form above the cover.
-                Box(Modifier.fillMaxWidth().height(325.dp)
+                Box(Modifier.fillMaxWidth().height(
+                    if (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < 600)
+                        210.dp else 325.dp)
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
                     .background(Brush.linearGradient(listOf(
                         Color(0xFF173E3D), Color(0xFF222953), Color(0xFF10121E))))) {
@@ -1189,6 +1279,26 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         Icon(Icons.Rounded.Cast, null)
                         Spacer(Modifier.width(8.dp))
                         Text("Cast", maxLines = 1)
+                    }
+                }
+                if (playbackError.isNotBlank()) {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(15.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.WifiOff, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer)
+                            Spacer(Modifier.width(10.dp))
+                            Text(playbackError, modifier = Modifier.weight(1f),
+                                maxLines = 3,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer)
+                            if (current?.kind == EntryKind.RADIO) {
+                                TextButton(onClick = {
+                                    current?.let { playItem(it) }
+                                }) { Text("Erneut") }
+                            }
+                        }
                     }
                 }
                 NativePlayerControls(player, isLive = current?.kind == EntryKind.RADIO,
