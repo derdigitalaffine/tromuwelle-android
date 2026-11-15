@@ -40,6 +40,7 @@ class TromuwellePlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(app.session.client)))
             .build()
+        LocalAudioOutput.bind(player)
         val openApp = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or
                 PendingIntent.FLAG_UPDATE_CURRENT)
@@ -50,7 +51,10 @@ class TromuwellePlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = library
 
     override fun onDestroy() {
-        library?.let { session -> session.player.release(); session.release() }
+        library?.let { session ->
+            (session.player as? ExoPlayer)?.let { LocalAudioOutput.unbind(it) }
+            session.player.release(); session.release()
+        }
         library = null
         jobs.shutdownNow()
         super.onDestroy()
