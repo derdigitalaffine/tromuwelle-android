@@ -1,6 +1,9 @@
 package de.tromuwelle.android
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
+import kotlinx.coroutines.isActive
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -202,32 +205,92 @@ fun MusicPlaylistsScreen(session: TromuwelleSession, onBack: () -> Unit,
     }
 }
 
-/** Lazy, on-demand lyrics retrieval; never bulk-fetch lyrics without user action. */
+data class LyricLine(val timeMs: Long, val text: String)
+
+/** LRC supports multiple timestamps per line and hundredths or thousandths of a second. */
+fun parseSyncedLyrics(input: String): List<LyricLine> {
+    val marker = Regex("""\\[(\\d{1,3}):(\\d{2})(?:[.,](\\d{1,3}))?]""")
+    return input.lineSequence().flatMap { row ->
+        val matches = marker.findAll(row).toList()
+        val text = marker.replace(row, "").trim()
+        if (text.isEmpty()) emptyList<LyricLine>().asSequence() else matches.asSequence().map { match ->
+            val fraction = match.groupValues[3]
+            val ms = if (fraction.isBlank()) 0L else
+                (fraction.toLong() * when(fraction.length) {
+                    1 -> 100L
+                    2 -> 10L
+                    else -> 1L
+                })
+            val t = (match.groupValues[1].toLong() * 60L +
+                match.groupValues[2].toLong()) * 1000L + ms
+            LyricLine(t, text)
+        }
+    }.sortedBy { it.timeMs }.toList()
+}
+
 @Composable
-fun MusicLyricsDialog(session: TromuwelleSession, track: LibraryEntry, onDismiss: () -> Unit) {
+fun MusicLyricsDialog(session: TromuwelleSession, track: LibraryEntry,
+                      player: androidx.media3.common.Player? = null, onDismiss: () -> Unit) {
     val api = remember(session) { TromuwelleApi(session) }
     var data by remember(track.id) { mutableStateOf<JSONObject?>(null) }
     var error by remember(track.id) { mutableStateOf("") }
+    var sync by remember { mutableStateOf(true) }
+    var currentMs by remember { mutableLongStateOf(0) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val lines = remember(data) { parseSyncedLyrics(data?.optString("synced").orEmpty()) }
+    val active = lines.indexOfLast { it.timeMs <= currentMs }.coerceAtLeast(0)
     LaunchedEffect(track.id) {
         try { data = withContext(Dispatchers.IO) { api.musicLyrics(track.id) } }
         catch (e: Exception) { error = e.message ?: "Lyrics nicht verfügbar." }
     }
+    LaunchedEffect(player, sync, track.id) {
+        while (kotlinx.coroutines.currentCoroutineContext().isActive) {
+            if (sync) currentMs = player?.currentPosition ?: 0L
+            kotlinx.coroutines.delay(120L)
+        }
+    }
+    LaunchedEffect(active, sync, data) {
+        if (sync && lines.isNotEmpty()) listState.animateScrollToItem(active.coerceAtLeast(0))
+    }
     AlertDialog(onDismissRequest = onDismiss,
         title = { Text(track.title + " · Lyrics") },
         text = {
-            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
-                if (data == null && error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val result = data
+                if (result == null && error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (result != null) {
                     Text("Quelle: " + result.optString("provider", "unbekannt"),
                         style = MaterialTheme.typography.labelSmall)
-                    val lyrics = result.optString("plain").ifBlank { result.optString("synced") }
-                    if (lyrics.isNotBlank()) Text(lyrics)
-                    else Text(when (result.optString("status")) {
-                        "rate_limited" -> "Lyricsanbieter vorübergehend begrenzt. Später erneut versuchen."
-                        "busy" -> "Der Server verarbeitet gerade eine andere Lyrics-Anfrage."
-                        else -> "Für diesen Titel sind keine Lyrics verfügbar."
-                    })
+                    if (lines.isNotEmpty()) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Text("Zeile synchron markieren")
+                            Spacer(Modifier.weight(1f))
+                            Switch(checked = sync, onCheckedChange = { sync = it })
+                        }
+                        LazyColumn(Modifier.heightIn(max = 390.dp), state = listState,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(lines.size) { i ->
+                                Text(lines[i].text,
+                                    color = if (sync && i == active)
+                                        MaterialTheme.colorScheme.primary else
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = if (sync && i == active)
+                                        MaterialTheme.typography.titleLarge
+                                    else MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+                    } else {
+                        val plain = result.optString("plain").ifBlank { result.optString("synced") }
+                        if (plain.isNotBlank()) {
+                            Column(Modifier.heightIn(max = 390.dp).verticalScroll(rememberScrollState())) {
+                                Text(plain, style = MaterialTheme.typography.bodyLarge)
+                            }
+                        } else Text(when(result.optString("status")) {
+                            "rate_limited" -> "Lyricsanbieter vorübergehend begrenzt. Später erneut versuchen."
+                            "busy" -> "Der Server verarbeitet gerade eine andere Lyrics-Anfrage."
+                            else -> "Für diesen Titel sind keine Lyrics verfügbar."
+                        })
+                    }
                 }
                 if(error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
             }
