@@ -358,6 +358,19 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         }
     }
 
+    // Typed searches run automatically after a pause, avoiding a request
+    // on every keystroke or for one-letter NAS queries.
+    var hadLiveSearch by remember { mutableStateOf(false) }
+    LaunchedEffect(search, connected) {
+        if (!connected) return@LaunchedEffect
+        delay(420)
+        val value = search.trim()
+        if (value.length >= 2 || (value.isBlank() && hadLiveSearch)) {
+            hadLiveSearch = value.isNotBlank()
+            refresh()
+        }
+    }
+
     fun switchSection(next: LibrarySection) {
         podcastsOpen = false
         globalSearchOpen = false
@@ -800,13 +813,40 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     }) { Text("‹ Zurück" + listOf(artistName, albumName).filter { it.isNotBlank() }.joinToString(" / ", " · ")) }
                 }
             }
-            OutlinedButton(onClick = { advancedFiltersOpen = !advancedFiltersOpen },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp)) {
-                Icon(if (advancedFiltersOpen) androidx.compose.material.icons.Icons.Rounded.ExpandLess
-                    else androidx.compose.material.icons.Icons.Rounded.Tune,
-                    contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(if (advancedFiltersOpen) "Weniger Filter anzeigen" else "Filter & Sortierung")
+            val changedFilters = when (section) {
+                LibrarySection.MUSIC -> onlyLossless || minBitrate > 0 || musicSort != "album"
+                LibrarySection.MEDIA, LibrarySection.PRIVATE ->
+                    mediaSort != "name" || mediaMinHeight > 0 || adultTag.isNotBlank()
+                LibrarySection.RADIO -> radioBitrate != 192 || radioCodec != "mp3"
+                LibrarySection.TV -> false
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 1.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(selected = advancedFiltersOpen,
+                    onClick = { advancedFiltersOpen = !advancedFiltersOpen },
+                    leadingIcon = {
+                        Icon(if (advancedFiltersOpen) Icons.Rounded.ExpandLess
+                            else Icons.Rounded.Tune, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                    },
+                    label = { Text(if (advancedFiltersOpen) "Filter schließen" else "Filter & Sortieren") })
+                if (changedFilters) TextButton(onClick = {
+                    when (section) {
+                        LibrarySection.MUSIC -> {
+                            musicSort = "album"; minBitrate = 0; onlyLossless = false
+                        }
+                        LibrarySection.MEDIA, LibrarySection.PRIVATE -> {
+                            mediaSort = "name"; mediaMinHeight = 0; adultTag = ""
+                        }
+                        LibrarySection.RADIO -> { radioBitrate = 192; radioCodec = "mp3" }
+                        LibrarySection.TV -> Unit
+                    }
+                    refresh()
+                }) { Text("Reset") }
+                Spacer(Modifier.weight(1f))
+                Text(if (loading) "Lädt …" else "${entries.size} Inhalte",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (advancedFiltersOpen) {
             if (section == LibrarySection.MUSIC && browse == MusicBrowse.TRACKS) {
@@ -854,12 +894,20 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     Text("‹ Ordner zurück · " + folder)
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(search, { search = it }, modifier = Modifier.weight(1f),
-                    singleLine = true, label = { Text("Suchen") },
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(search, { search = it.take(120) },
+                    modifier = Modifier.weight(1f), singleLine = true,
+                    placeholder = { Text("In ${section.label} suchen") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                    trailingIcon = {
+                        if (search.isNotBlank()) IconButton(onClick = {
+                            search = ""; refresh()
+                        }) { Icon(Icons.Rounded.Close, contentDescription = "Suche löschen") }
+                    },
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { refresh() }))
-                TextButton(onClick = { refresh() }) { Text("Los") }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 FilterChip(selected = onlyFavorites, onClick = { onlyFavorites = !onlyFavorites },
@@ -867,7 +915,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = { refresh() }) { Text("Aktualisieren") }
             }
-            if (section == LibrarySection.MEDIA || section == LibrarySection.PRIVATE) {
+            if (advancedFiltersOpen && (section == LibrarySection.MEDIA || section == LibrarySection.PRIVATE)) {
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("name", "newest", "quality", "longest").forEach { option ->
@@ -898,7 +946,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     }
                 }
             }
-            if (section == LibrarySection.RADIO) {
+            if (advancedFiltersOpen && section == LibrarySection.RADIO) {
                 Text("Server-Transcoding", Modifier.padding(horizontal = 16.dp),
                     style = MaterialTheme.typography.labelMedium)
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
