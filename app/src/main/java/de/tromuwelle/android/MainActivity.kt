@@ -1108,25 +1108,93 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 val playingTitle = player.mediaMetadata.title?.toString()
                     .orEmpty().ifBlank { current?.title.orEmpty() }
-                Text("JETZT LÄUFT", color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.labelMedium)
-                Text(playingTitle, style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.ExtraBold)
-                Text(current?.description.orEmpty(),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                current?.let { item ->
-                    AuthenticatedArtwork(session, item, Modifier.fillMaxWidth()
-                        .height(250.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)))
+                // The media itself is the focus; controls sit below the art
+                // instead of putting a tall text-heavy form above the cover.
+                Box(Modifier.fillMaxWidth().height(325.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
+                    .background(Brush.linearGradient(listOf(
+                        Color(0xFF173E3D), Color(0xFF222953), Color(0xFF10121E))))) {
+                    current?.let { item ->
+                        AuthenticatedArtwork(session, item, Modifier.fillMaxSize())
+                    }
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                        0.0f to Color.Black.copy(alpha = 0.02f),
+                        0.45f to Color.Black.copy(alpha = 0.25f),
+                        1.0f to Color.Black.copy(alpha = 0.93f))))
+                    Column(Modifier.align(Alignment.BottomStart).padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.90f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(9.dp)) {
+                            Text(when {
+                                current?.id?.startsWith("podcast:") == true -> "PODCAST · JETZT LÄUFT"
+                                current?.kind == EntryKind.RADIO -> "LIVE · INTERNERNETRADIO"
+                                else -> "TROMUWELLE · JETZT LÄUFT"
+                            }, Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold)
+                        }
+                        Text(playingTitle, style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White, maxLines = 2)
+                        Text(current?.description.orEmpty(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.82f),
+                            maxLines = 2)
+                    }
                 }
-                OutlinedButton(onClick = { audioSheetOpen = false; localOutputOpen = true },
-                    modifier = Modifier.fillMaxWidth()) {
-                    Icon(androidx.compose.material.icons.Icons.Rounded.Speaker, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Audioausgabe · Intern / Bluetooth / Cast")
+                Row(Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = {
+                        audioSheetOpen = false; localOutputOpen = true
+                    }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.Speaker, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Audioausgabe", maxLines = 1)
+                    }
+                    FilledTonalButton(onClick = {
+                        audioSheetOpen = false
+                        castCandidate = current
+                        castOutputOpen = true
+                    }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.Cast, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Cast", maxLines = 1)
+                    }
                 }
                 NativePlayerControls(player, isLive = current?.kind == EntryKind.RADIO,
                     isAudio = true, onPip = onPip)
+                if (queueEntries.size > 1) {
+                    val nextIndex = (player.currentMediaItemIndex + 1)
+                        .coerceAtMost(queueEntries.lastIndex)
+                    val nextTrack = queueEntries.getOrNull(nextIndex)
+                    if (nextTrack != null && player.hasNextMediaItem()) {
+                        Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                AuthenticatedArtwork(session, nextTrack,
+                                    Modifier.size(52.dp).clip(
+                                        androidx.compose.foundation.shape.RoundedCornerShape(12.dp)))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("ALS NÄCHSTES",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary)
+                                    Text(nextTrack.title,
+                                        maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                    Text(nextTrack.description, maxLines = 1,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                IconButton(onClick = { player.seekToNextMediaItem() }) {
+                                    Icon(Icons.Rounded.SkipNext, contentDescription = "Nächsten Titel spielen")
+                                }
+                            }
+                        }
+                    }
+                }
                 if (activePodcast != null &&
                     player.currentMediaItem?.mediaId == "PODCAST:" + activePodcast?.optString("id")) {
                     if (activePodcast?.optString("transcript_url").orEmpty().isNotBlank()) {
