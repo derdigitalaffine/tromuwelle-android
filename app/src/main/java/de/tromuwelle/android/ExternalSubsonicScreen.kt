@@ -236,7 +236,10 @@ fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
                                 onPlay(server, rows, index)
                             }
                         }
-                    }.padding(vertical = 12.dp, horizontal = 8.dp)) {
+                    }.padding(vertical = 12.dp, horizontal = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        ExternalSubsonicCover(selected, entry, Modifier.size(52.dp))
+                        Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(label, style = MaterialTheme.typography.titleMedium)
                             if (description.isNotBlank())
