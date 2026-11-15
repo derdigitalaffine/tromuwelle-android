@@ -65,6 +65,7 @@ fun StreamScaffold(
     tab: StreamTab,
     onTab: (StreamTab) -> Unit,
     onSearch: () -> Unit,
+    onOutput: () -> Unit,
     onProfile: () -> Unit,
     current: LibraryEntry?,
     player: Player?,
@@ -94,6 +95,9 @@ fun StreamScaffold(
                 }
                 IconButton(onClick = onSearch) {
                     Icon(Icons.Rounded.Search, contentDescription = "Alle Medien durchsuchen")
+                }
+                IconButton(onClick = onOutput) {
+                    Icon(Icons.Rounded.Cast, contentDescription = "Audioausgang und Cast wählen")
                 }
                 IconButton(onClick = onProfile) {
                     Icon(Icons.Rounded.AccountCircle, contentDescription = "Konto und Verwaltung")
@@ -130,6 +134,9 @@ fun StreamScaffold(
                                     overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = onOutput) {
+                                Icon(Icons.Rounded.Speaker, contentDescription = "Audioausgabe wählen")
                             }
                             IconButton(onClick = {
                                 if (player?.isPlaying == true) player.pause() else player?.play()
@@ -514,7 +521,7 @@ private fun StreamRail(
 fun StreamVideoDetails(session: TromuwelleSession, entry: LibraryEntry,
                        onDismiss: () -> Unit, onPlay: () -> Unit,
                        onInfo: () -> Unit, onDownload: () -> Unit,
-                       onFavorite: () -> Unit, favorite: Boolean) {
+                       onFavorite: () -> Unit, onCast: () -> Unit, favorite: Boolean) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 30.dp),
@@ -533,6 +540,11 @@ fun StreamVideoDetails(session: TromuwelleSession, entry: LibraryEntry,
                 Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Jetzt abspielen")
+            }
+            OutlinedButton(onClick = onCast, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Rounded.Cast, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Auf Cast-Gerät abspielen")
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 TextButton(onClick = onFavorite) {

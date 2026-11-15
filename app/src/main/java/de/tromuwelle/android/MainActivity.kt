@@ -178,6 +178,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var streamTab by remember { mutableStateOf(StreamTab.HOME) }
     var profileOpen by remember { mutableStateOf(false) }
     var audioSheetOpen by remember { mutableStateOf(false) }
+    var localOutputOpen by remember { mutableStateOf(false) }
+    var castOutputOpen by remember { mutableStateOf(false) }
+    var castCandidate by remember { mutableStateOf<LibraryEntry?>(null) }
     var globalSearchOpen by remember { mutableStateOf(false) }
     var podcastsOpen by remember { mutableStateOf(false) }
     var activePodcast by remember { mutableStateOf<JSONObject?>(null) }
@@ -628,6 +631,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 }
             },
             onSearch = { globalSearchOpen = true; podcastsOpen = false },
+            onOutput = { localOutputOpen = true },
             onProfile = { profileOpen = true },
             current = current,
             player = player,
@@ -982,6 +986,21 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             } // end streaming content Column
         } // end StreamScaffold
     } // end connected screen
+    if (localOutputOpen && connected) {
+        ModalBottomSheet(onDismissRequest = { localOutputOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            LocalAudioOutputSheet(onClose = { localOutputOpen = false },
+                onCast = { localOutputOpen = false; castCandidate = current; castOutputOpen = true })
+        }
+    }
+    if (castOutputOpen && connected) {
+        ModalBottomSheet(onDismissRequest = { castOutputOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            CastOutputSheet(session = session, entry = castCandidate ?: current, player = player,
+                onClose = { castOutputOpen = false },
+                onLocal = { castOutputOpen = false; localOutputOpen = true })
+        }
+    }
     if (profileOpen && connected) {
         ModalBottomSheet(onDismissRequest = { profileOpen = false }) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
@@ -1041,6 +1060,12 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     AuthenticatedArtwork(session, item, Modifier.fillMaxWidth()
                         .height(250.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)))
                 }
+                OutlinedButton(onClick = { audioSheetOpen = false; localOutputOpen = true },
+                    modifier = Modifier.fillMaxWidth()) {
+                    Icon(androidx.compose.material.icons.Icons.Rounded.Speaker, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Audioausgabe · Intern / Bluetooth / Cast")
+                }
                 NativePlayerControls(player, isLive = current?.kind == EntryKind.RADIO,
                     isAudio = true, onPip = onPip)
                 if (activePodcast != null &&
@@ -1076,6 +1101,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 savePicker.launch(entry.path.substringAfterLast('/').ifBlank { entry.title })
             },
             onFavorite = { toggleFavorite(entry) },
+            onCast = { castCandidate = entry; videoSelection = null; castOutputOpen = true },
             favorite = (entry.kind.name + ":" + entry.id) in favorites)
     }
     if (transcriptOpen && activePodcast != null) {
