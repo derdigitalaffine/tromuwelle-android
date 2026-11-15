@@ -818,7 +818,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         }
     }
     lyricsEntry?.let { entry ->
-        MusicLyricsDialog(session, entry, onDismiss = { lyricsEntry = null })
+        MusicLyricsDialog(session, entry, player = player, onDismiss = { lyricsEntry = null })
     }
     infoEntry?.let { entry ->
         MediaInfoDialog(session, entry, section == LibrarySection.PRIVATE,
