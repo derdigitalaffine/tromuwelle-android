@@ -109,14 +109,23 @@ class TromuwellePlaybackService : MediaLibraryService() {
                             // Only our in-app controller may submit resolved URIs.
                             if (controller.packageName == packageName) item else null
                         }
-                        item.mediaId.startsWith("car:play:") -> resolve(item.mediaId)
+                        item.mediaId.startsWith("car:play:") -> resolve(item.mediaId, item.mediaMetadata)
                         else -> null
                     }
                 }
             }
 
-        private fun resolve(id: String): MediaItem? {
+        private fun resolve(id: String, metadata: MediaMetadata): MediaItem? {
             val value = id.removePrefix("car:play:")
+            if (value.startsWith("podcast:")) {
+                val episode = value.removePrefix("podcast:")
+                // A podcast episode id is the server SHA-256 prefix; never accept URL paths here.
+                if (!episode.matches(Regex("[0-9a-f]{32}"))) return null
+                if (!app.session.restoreVerified()) return null
+                return MediaItem.Builder().setMediaId("PODCAST:" + episode)
+                    .setUri(app.session.url("/api/podcasts/episodes/" + episode + "/stream?codec=original"))
+                    .setMediaMetadata(metadata).build()
+            }
             if (value.startsWith("radio:")) {
                 val station = value.removePrefix("radio:")
                 if (!station.matches(Regex("[A-Za-z0-9_-]{1,80}"))) return null
@@ -163,6 +172,7 @@ class TromuwellePlaybackService : MediaLibraryService() {
                 if (main) {
                     entries += node("car:radio", "Internetradio")
                     entries += node("car:music", "Tromuwelle Musik")
+                    entries += node("car:podcasts", "Podcasts")
                 }
                 if (store.all().isNotEmpty()) entries += node("car:external", "Andere Musikserver")
                 return entries
@@ -220,6 +230,27 @@ class TromuwellePlaybackService : MediaLibraryService() {
             if (!main) return emptyList()
             val api = TromuwelleApi(app.session)
             return when {
+                parent == "car:podcasts" -> listOf(
+                    node("car:podcasts:latest", "Neueste Folgen"),
+                    node("car:podcasts:shows", "Meine Sendungen"))
+                parent == "car:podcasts:shows" -> TromuPodcasts(app.session).feeds()
+                    .drop(offset.toInt().coerceAtLeast(0)).take(limit).map {
+                        node("car:podcast:feed:" + it.optString("id"), it.optString("title"))
+                    }
+                parent == "car:podcasts:latest" || parent.startsWith("car:podcast:feed:") -> {
+                    val feed = parent.removePrefix("car:podcast:feed:")
+                        .takeIf { parent.startsWith("car:podcast:feed:") }.orEmpty()
+                    if (feed.isNotBlank() && !feed.matches(Regex("[0-9a-f]{32}")))
+                        emptyList() else {
+                        val perPage = limit.coerceAtMost(200)
+                        val start = (page.toLong() * perPage).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                        TromuPodcasts(app.session).episodes(feedId = feed,
+                            offset = start, limit = perPage).first.map {
+                            carSong("podcast:" + it.optString("id"), it.optString("title"),
+                                it.optString("feed_title"))
+                        }
+                    }
+                }
                 parent == "car:radio" -> objects(api.radioStations()).map {
                     carSong("radio:" + it.optString("id"), it.optString("name"),
                         it.optString("genre"))
