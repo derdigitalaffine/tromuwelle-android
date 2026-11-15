@@ -141,7 +141,7 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
             if (playlistName.trim().isBlank()) error = "Bitte zuerst den Playlistnamen eingeben."
             else act("M3U-Playlist importiert.", {
                 val data = readLimitedFile(context, uri, 12_000_000)
-                api.uploadPlaylist(playlistName, data)
+                api.uploadPlaylist(playlistName.trim(), data)
             }, sources = true)
         }
     }
@@ -186,8 +186,10 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(enabled = !busy && playlistName.isNotBlank() && playlistUrl.isNotBlank(),
                                 onClick = {
+                                    val name = playlistName
+                                    val url = playlistUrl
                                     act("Playlist gespeichert.", {
-                                        api.addPlaylist(playlistName, playlistUrl)
+                                        api.addPlaylist(name, url)
                                     }, sources = true)
                                 }) { Text("URL hinzufügen") }
                             OutlinedButton(enabled = !busy && playlistName.isNotBlank(),
@@ -223,7 +225,8 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                                 OutlinedTextField(playlistName, { playlistName = it },
                                     label = { Text("Neuer Name") }, modifier = Modifier.fillMaxWidth())
                                 Button(onClick = {
-                                    act("Playlist umbenannt.", { api.renamePlaylist(id, playlistName) })
+                                    val name = playlistName
+                                    act("Playlist umbenannt.", { api.renamePlaylist(id, name) })
                                     editingPlaylistId = ""
                                 }) { Text("Namen speichern") }
                             }
@@ -246,8 +249,12 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                             Button(enabled = !busy && radioName.isNotBlank() && radioUrl.isNotBlank(),
                                 onClick = {
                                     val selected = radioId.ifBlank { null }
+                                    val name = radioName
+                                    val url = radioUrl
+                                    val genre = radioGenre
+                                    val logo = radioLogo
                                     act("Radiosender gespeichert.", {
-                                        api.saveRadio(selected, radioName, radioUrl, radioGenre, radioLogo)
+                                        api.saveRadio(selected, name, url, genre, logo)
                                     }, sources = true)
                                     radioId = ""; radioName = ""; radioUrl = ""; radioGenre = ""; radioLogo = ""
                                 }) { Text(if (radioId.isBlank()) "Hinzufügen" else "Speichern") }
@@ -290,8 +297,10 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                             }
                         }
                         Button(enabled = !busy, onClick = {
+                            val seconds = buffer.toInt()
+                            val height = maxHeight
                             act("Stream-Einstellungen gespeichert.", {
-                                api.saveStreamSettings(buffer.toInt(), maxHeight)
+                                api.saveStreamSettings(seconds, height)
                             })
                         }) { Text("Stream-Einstellungen speichern") }
                         HorizontalDivider()
@@ -300,7 +309,8 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                             label = { Text("Portal-Unterpfad (leer = deaktiviert)") },
                             modifier = Modifier.fillMaxWidth())
                         Button(enabled = !busy, onClick = {
-                            act("Medienportal-Einstellung gespeichert.", { api.saveMediaPath(mediaPath) },
+                            val path = mediaPath
+                            act("Medienportal-Einstellung gespeichert.", { api.saveMediaPath(path) },
                                 sources = true)
                         }) { Text("Medienportal speichern") }
                     }
@@ -381,8 +391,11 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                             Button(enabled = !busy && userName.length >= 3 && userPassword.length >= 12,
                                 onClick = {
                                     val rootsArray = userRoots.toJsonArray()
+                                    val name = userName
+                                    val password = userPassword
+                                    val role = userRole
                                     act("Benutzer angelegt.", {
-                                        api.createUser(userName, userPassword, userRole, rootsArray)
+                                        api.createUser(name, password, role, rootsArray)
                                     })
                                     userName = ""; userPassword = ""; userRoots = emptySet()
                                 }) { Text("Benutzer anlegen") }
@@ -412,8 +425,9 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                             }
                             Button(onClick = {
                                 val chosen = userRoots.toJsonArray()
+                                val role = userRole
                                 act("Benutzerrechte gespeichert. Aktive Sitzungen wurden widerrufen.", {
-                                    api.updateUser(id, userRole, chosen)
+                                    api.updateUser(id, role, chosen)
                                 })
                                 editingUserId = -1
                             }) { Text("Rechte speichern") }
