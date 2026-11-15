@@ -153,3 +153,12 @@ Offen: echte Gerätetests, Podcast-E2E mit einem realen Feed, SNI/Caddy-TLS mit 
 - Posterbibliotheken als echtes adaptives LazyVerticalGrid mit stabilen Medien-IDs und eigener Full-Width-Nachladen-Zeile; weniger UI-Neuberechnungen beim Paging.
 - Authentifizierte Cover behalten Cookie-/TLS-Transport, Session-Cache-Trennung und Fallback-Retry, mit gemerkten Coil Requests und nicht animiertem Platzhalter für geringere Rendering-Last.
 - JVM-Test für die Serverbereichs-Auswahl; messbare FPS-/Netzwerk-Werte und echte Geräte-/Serverprüfungen stehen weiter aus.
+
+## v0.6.2-beta.1: externe Musikbibliotheken und Player
+
+- OpenSubsonic-Bibliotheksnavigation mit In-Flight-Abbruch, monotonen Request-Tokens und UI-gebundener Antwortzuordnung; bei Server-/Seitenwechsel können alte Daten nicht mehr als neue Seite erscheinen.
+- Adaptive manuelle Pagination für `getAlbumList2` und `search3` nur bei echten Offset-Abfragen; `getRandomSongs`, `getArtist`, `getAlbum` und Playlists werden nicht irrtümlich mehrfach angehängt.
+- Debounced Suche, klare Zufallstitel-Aktualisierung, Zeilenaktionen als Icons, stabile LazyColumn-Schlüssel und kompakte Beschriftungen.
+- Reuse eines TLS-geprüften OkHttp-Clients für alle Subsonic-Netzwerkanfragen (ohne Cookies) sowie Coil-Request-Memoization mit credential-abhängigen URL-Schlüsseln.
+- Media3 Player-Control mit zugänglichen Material-Icons, aktualisiertem Statuslistener, interaktivem Scrubbing und ruhigerem Polling bei Pause.
+- CI: Mobile und Automotive Unit-Tests, Lints und APKs; kein realer Geräte- oder Streaming-Langzeittest.

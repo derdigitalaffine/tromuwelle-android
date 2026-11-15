@@ -2,7 +2,6 @@ package de.tromuwelle.android
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -11,9 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
- import coil.compose.AsyncImage
-import okhttp3.OkHttpClient
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import org.json.JSONObject
 
@@ -25,7 +22,9 @@ fun ExternalSubsonicCover(source: SubsonicSource?, item: JSONObject,
     val loader = (context.applicationContext as TromuwelleApplication)
         .subsonicArtworkLoader
     val artworkId = item.optString("coverArt")
-    val url = remember(source?.id, item.optString("id"), artworkId) {
+    // Source includes its current credentials: editing the account must never
+    // reuse the previous account's signed image URL.
+    val url = remember(source, item.optString("id"), artworkId) {
         if (source == null || artworkId.isBlank()) "" else
             SubsonicClient(source).coverUrl(artworkId)
     }
@@ -35,7 +34,10 @@ fun ExternalSubsonicCover(source: SubsonicSource?, item: JSONObject,
             Text("♪", style = MaterialTheme.typography.titleLarge)
         }
     } else {
-        AsyncImage(model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
+        val request = remember(context, url) {
+            ImageRequest.Builder(context).data(url).crossfade(120).build()
+        }
+        AsyncImage(model = request,
             imageLoader = loader,
             contentDescription = item.optString("title").ifBlank { item.optString("name") },
             contentScale = ContentScale.Crop,

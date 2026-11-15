@@ -4,6 +4,18 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 
 **Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (laufender API-Abgleich mit dem aktuellen privaten Tromuwelle-Server).
 
+## v0.6.2-beta.1 – externe Musikserver und Player verbessert
+
+**Externe Subsonic-Bibliotheken:** Bei schnellen Wechseln zwischen Servern, Alben, Playlists und Suchanfragen werden vorherige Ladevorgänge abgebrochen und verspätete Antworten verworfen. Die Liste löscht beim Wechsel ihre veralteten Treffer, bietet automatische Suche mit kurzer Tipp-Pause, eine klare Aktualisieren-Schaltfläche und eine verständliche Kennzeichnung der Zufallstitelauswahl. Cover und Zeilen sind kompakter, einzeilig und besser bedienbar.
+
+**Korrektes Paging:** Nur tatsächlich offset-paginierte Albenlisten und Suchergebnisse bieten „Weitere laden“. Einzeltitel aus Alben, Künstlerverzeichnisse, Playlists und zufällige Titel werden nicht mehr endlos „nachgeladen“. Der Paging-Offset folgt der Rohantwort des Servers, nicht nur der gefilterten Teilmenge, und wiederholte Treffer zwischen Seiten werden dedupliziert.
+
+**Weniger TLS-Overhead:** Die separaten OpenSubsonic-Clientinstanzen nutzen einen gemeinsamen HTTPS-/TLS-OkHttp-Verbindungspool ohne geteilte Cookies oder Nutzercredentials. Coil-Requests für externe Cover werden zwischen Recompositions wiederverwendet; bei Änderung eines Server-Accounts wird seine signierte Bild-URL erneuert.
+
+**Native Wiedergabe:** Klar beschriftete und zugängliche Play/Pause-, Vor-/Zurück-, Sprung-, Vollbild- und Bild-in-Bild-Bedienelemente, weniger periodische UI-Updates bei pausiertem Player und stabilere Fortschrittsanzeige während des Ziehens am Seek-Regler. Unit-Tests decken die Paging-Regeln und Zeitformatierung ab.
+
+**Grenzen:** APKs sind vorerst Debug-signiert. Ein echter TLS-/OpenSubsonic-/Bluetooth-/Tablet-/Automotive-Dauertest und messbare FPS-/Akkulaufzeitvergleiche stehen weiterhin aus.
+
 ## v0.6.1-beta.1 – flüssigere Bibliotheken und gezielte Suche
 
 - **Schnellere Suche auf schwachen oder entfernten Servern:** Die Kategorie-Filter begrenzen die tatsächlich ausgeführten Serverabfragen; beispielsweise lädt „Musik“ nicht gleichzeitig Radio, Live-TV, Filme und Podcasts. Abgebrochene Suchläufe werden korrekt behandelt, alte Ergebnisse bleiben beim Wechsel des Suchbegriffs oder Filters nicht kurz stehen. Globale Suche enthält weiterhin niemals die private 18+-Bibliothek.
