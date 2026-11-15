@@ -143,6 +143,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var isPlaying by remember { mutableStateOf(false) }
     var radioRetries by remember { mutableIntStateOf(0) }
     var fullscreen by remember { mutableStateOf(false) }
+    var videoDetail by remember { mutableStateOf(false) }
     var compatible by remember { mutableStateOf(false) }
     var quality by remember { mutableIntStateOf(1080) }
     var compatStart by remember { mutableStateOf("0") }
@@ -327,6 +328,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 controller.play()
             }
             current = entry
+            videoDetail = entry.isVideo()
             radioRetries = 0
             if (entry.kind == EntryKind.RADIO) {
                 recent.remove(entry.id); recent.add(0, entry.id)
@@ -507,16 +509,16 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         val now = player?.mediaMetadata?.title?.toString().orEmpty()
                             .ifBlank { current?.title.orEmpty() }
                         Text(now, style = MaterialTheme.typography.titleMedium, maxLines = 2)
-                        if (current?.isVideo() == true && !fullscreen) {
-                            AndroidView(factory = { ctx -> PlayerView(ctx).apply {
-                                useController = true; keepScreenOn = true
-                            } }, update = { it.player = player }, modifier = Modifier.fillMaxWidth().height(210.dp))
+                        if (current?.isVideo() == true) {
+                            Row(Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { videoDetail = true }) { Text("▶ Video öffnen") }
+                                TextButton(onClick = { fullscreen = true }) { Text("Vollbild") }
+                            }
+                        } else if (player != null) {
+                            NativePlayerControls(player,
+                                isLive = false, isAudio = true, onPip = onPip)
                         }
-                        if (player != null) NativePlayerControls(player,
-                            isLive = current?.kind == EntryKind.TV,
-                            isAudio = current?.isVideo() != true,
-                            canSeek = current?.kind != EntryKind.FILE || !compatible,
-                            onFullscreen = { fullscreen = true }, onPip = onPip)
                         if (current?.kind == EntryKind.TRACK && current?.id?.startsWith("ext:") != true) {
                             TextButton(onClick = { lyricsEntry = current }) { Text("Liedtext (Lyrics)") }
                         }
@@ -824,14 +826,31 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         MediaInfoDialog(session, entry, section == LibrarySection.PRIVATE,
             onDismiss = { infoEntry = null }, onChanged = { refresh() })
     }
-    if (fullscreen && current?.isVideo() == true) {
-        Dialog(onDismissRequest = { fullscreen = false },
+    if ((fullscreen || videoDetail) && current?.isVideo() == true) {
+        Dialog(onDismissRequest = { fullscreen = false; videoDetail = false },
             properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Black) {
-                Column {
-                    TextButton(onClick = { fullscreen = false }) { Text("Schließen") }
-                    AndroidView(factory = { ctx -> PlayerView(ctx).apply { keepScreenOn = true } },
-                        update = { it.player = player }, modifier = Modifier.fillMaxSize())
+                Column(Modifier.fillMaxSize().padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(current?.title.orEmpty(), color = androidx.compose.ui.graphics.Color.White,
+                            maxLines = 1, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { fullscreen = false; videoDetail = false }) {
+                            Text("Zur Bibliothek")
+                        }
+                    }
+                    AndroidView(factory = { ctx -> PlayerView(ctx).apply {
+                        useController = true; keepScreenOn = true
+                    } }, update = { it.player = player }, modifier = Modifier.fillMaxWidth().weight(1f))
+                    Surface(color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(8.dp)) {
+                            if (player != null) NativePlayerControls(player,
+                                isLive = current?.kind == EntryKind.TV, isAudio = false,
+                                canSeek = current?.kind != EntryKind.FILE || !compatible,
+                                onFullscreen = { fullscreen = true }, onPip = onPip)
+                        }
+                    }
                 }
             }
         }
