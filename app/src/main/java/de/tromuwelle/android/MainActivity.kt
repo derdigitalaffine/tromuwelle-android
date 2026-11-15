@@ -222,26 +222,6 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var onlyFavorites by remember { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
 
-    BackHandler(enabled = connected && (globalSearchOpen || podcastsOpen)) {
-        if (globalSearchOpen) globalSearchOpen = false
-        else if (podcastsOpen) podcastsOpen = false
-    }
-    // The Android system Back button follows the same breadcrumb hierarchy as
-    // the on-screen controls instead of abruptly closing the streaming app.
-    BackHandler(enabled = connected && !globalSearchOpen && !podcastsOpen &&
-        (album.isNotBlank() || artist.isNotBlank() || folder.isNotBlank())) {
-        when {
-            album.isNotBlank() -> {
-                album = ""; albumName = ""; browse = MusicBrowse.ALBUMS; refresh()
-            }
-            artist.isNotBlank() -> {
-                artist = ""; artistName = ""; browse = MusicBrowse.ARTISTS; refresh()
-            }
-            folder.isNotBlank() -> {
-                folder = folder.substringBeforeLast('/', ""); refresh()
-            }
-        }
-    }
     LaunchedEffect(connected, session.server, session.username) {
         favorites.clear(); recent.clear()
         if (connected) {
@@ -417,6 +397,26 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         refresh()
     }
 
+    BackHandler(enabled = connected && (globalSearchOpen || podcastsOpen)) {
+        if (globalSearchOpen) globalSearchOpen = false
+        else if (podcastsOpen) podcastsOpen = false
+    }
+    // The Android system Back button follows the same breadcrumb hierarchy as
+    // the on-screen controls instead of abruptly closing the streaming app.
+    BackHandler(enabled = connected && !globalSearchOpen && !podcastsOpen &&
+        (album.isNotBlank() || artist.isNotBlank() || folder.isNotBlank())) {
+        when {
+            album.isNotBlank() -> {
+                album = ""; albumName = ""; browse = MusicBrowse.ALBUMS; refresh()
+            }
+            artist.isNotBlank() -> {
+                artist = ""; artistName = ""; browse = MusicBrowse.ARTISTS; refresh()
+            }
+            folder.isNotBlank() -> {
+                folder = folder.substringBeforeLast('/', ""); refresh()
+            }
+        }
+    }
     fun playItem(entry: LibraryEntry, fromSeconds: Long = 0L) {
         val controller = player ?: run {
             playbackError = "Player wird verbunden. Bitte erneut versuchen."
