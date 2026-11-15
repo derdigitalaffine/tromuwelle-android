@@ -294,6 +294,21 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             favorites.toSet()).apply()
     }
 
+    LaunchedEffect(session) {
+        if (session.server.isNotBlank()) {
+            connecting = true
+            try {
+                val verified = withContext(Dispatchers.IO) { session.restoreVerified() }
+                if (verified) {
+                    server = session.server
+                    username = session.username
+                    connected = true
+                    refresh()
+                }
+            } finally { connecting = false }
+        }
+    }
+
     if (connected && accountPage) {
         AccountScreen(session, onBack = { accountPage = false }, onSessionRevoked = {
             player?.stop(); player?.clearMediaItems(); current = null
