@@ -556,6 +556,11 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                         Text("Medienindex", style = MaterialTheme.typography.titleMedium)
                         Text(index.optString("message", index.optString("error", "Status verfügbar")))
                         Text("Status: " + if(index.optBoolean("running")) "Läuft" else "Bereit")
+                        Text("Gescannt: " + index.optInt("scanned") +
+                            " · Aktualisiert: " + index.optInt("updated") +
+                            " · Fehler: " + index.optInt("errors") +
+                            " · Gespeichert: " + index.optInt("total"),
+                            style = MaterialTheme.typography.bodySmall)
                         Row {
                             Button(enabled = !busy && !index.optBoolean("running"), onClick = {
                                 act("Medienindex gestartet.", { api.startMediaIndex() })
@@ -565,6 +570,14 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                                 act("Index-Stopp angefordert.", { api.stopMediaIndex() })
                             }) { Text("Stoppen") }
                         }
+                        OutlinedButton(enabled = !busy && !index.optBoolean("running"), onClick = {
+                            act("18+-Kategorien werden neu indiziert.", {
+                                api.rebuildAdultCategories()
+                            })
+                        }) { Text("18+-Kategorien vollständig neu zuordnen") }
+                        Text("Startet die serverseitige Neuzuordnung von Genres und Schlagwörtern; " +
+                            "vorhandene Medienordner und Zugriffsrechte bleiben bestehen.",
+                            style = MaterialTheme.typography.bodySmall)
                         HorizontalDivider()
                         Text("Musikscanner", style = MaterialTheme.typography.titleMedium)
                         Text(musicIndex.optString("message", musicIndex.optString("error", "Status verfügbar")))

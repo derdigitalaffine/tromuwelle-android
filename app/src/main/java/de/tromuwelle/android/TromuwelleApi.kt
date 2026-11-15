@@ -49,6 +49,7 @@ class TromuwelleApi(private val session: TromuwelleSession) {
 
     fun mediaIndex() = json("/api/media/index")
     fun startMediaIndex() = jsonPost("/api/media/index")
+    fun rebuildAdultCategories() = jsonPost("/api/media/adult/reindex")
     fun stopMediaIndex() = JSONObject(session.delete("/api/media/index"))
     fun musicQuality() = json("/api/music/quality")
     fun musicPlaylists() = json("/api/music/playlists").optJSONArray("items") ?: JSONArray()
