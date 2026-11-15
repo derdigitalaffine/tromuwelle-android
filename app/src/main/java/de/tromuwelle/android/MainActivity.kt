@@ -106,6 +106,12 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var connecting by remember { mutableStateOf(false) }
     var section by remember { mutableStateOf(LibrarySection.TV) }
     var browse by remember { mutableStateOf(MusicBrowse.TRACKS) }
+    var playlistsPage by remember { mutableStateOf(false) }
+    var lyricsEntry by remember { mutableStateOf<LibraryEntry?>(null) }
+    var musicSort by remember { mutableStateOf("album") }
+    var minBitrate by remember { mutableIntStateOf(0) }
+    var onlyLossless by remember { mutableStateOf(false) }
+    var musicQuality by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var artist by remember { mutableStateOf("") }
     var artistName by remember { mutableStateOf("") }
     var album by remember { mutableStateOf("") }
@@ -150,6 +156,11 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         }
     }
     LaunchedEffect(connected, section) {
+        if (connected && section == LibrarySection.MUSIC) {
+            musicQuality = try {
+                withContext(Dispatchers.IO) { TromuwelleApi(session).musicQuality() }
+            } catch (_: Exception) { null }
+        }
         if (connected && section == LibrarySection.PRIVATE) {
             adultFacets = try {
                 withContext(Dispatchers.IO) { TromuwelleApi(session).adultFacets().objects() }
@@ -222,7 +233,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 val page = withContext(Dispatchers.IO) {
                     catalog.load(targetSection, targetSearch, targetFolder, targetBrowse, targetArtist, targetAlbum,
                         nextOffset, adultTag, if (targetSection == LibrarySection.PRIVATE && mediaSort == "name")
-                            "newest" else mediaSort, mediaMinHeight)
+                            "newest" else mediaSort, mediaMinHeight,
+                        musicSort, minBitrate, onlyLossless)
                 }
                 if (token == loadToken) {
                     entries = if (append) entries + page.items else page.items
@@ -326,6 +338,22 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         }
     }
 
+    if (connected && playlistsPage) {
+        MusicPlaylistsScreen(session, onBack = { playlistsPage = false },
+            onPlay = { tracks ->
+                val controller = player
+                if (controller != null && tracks.isNotEmpty()) {
+                    controller.setMediaItems(tracks.map { it.mediaItem(session) })
+                    controller.prepare()
+                    controller.play()
+                    current = tracks.first()
+                    playbackStartMs = 0L
+                    playbackError = ""
+                }
+                playlistsPage = false
+            })
+        return
+    }
     if (connected && accountPage) {
         AccountScreen(session, onBack = { accountPage = false }, onSessionRevoked = {
             player?.stop(); player?.clearMediaItems(); current = null
@@ -432,6 +460,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             isAudio = current?.isVideo() != true,
                             canSeek = current?.kind != EntryKind.FILE || !compatible,
                             onFullscreen = { fullscreen = true }, onPip = onPip)
+                        if (current?.kind == EntryKind.TRACK) {
+                            TextButton(onClick = { lyricsEntry = current }) { Text("Liedtext (Lyrics)") }
+                        }
                         if (current?.kind == EntryKind.FILE && current?.audio == false) {
                             Row(Modifier.horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -476,6 +507,15 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 TextButton(onClick = { downloadMessage = "" }) { Text("Hinweis schließen") }
             }
             if (section == LibrarySection.MUSIC) {
+                if (session.account.managed) {
+                    TextButton(onClick = { playlistsPage = true }) { Text("Meine Musik-Playlists") }
+                }
+                musicQuality?.let { qualitySummary ->
+                    Text("${qualitySummary.optInt("albums")} Alben · " +
+                        "${qualitySummary.optInt("artists")} Künstler · " +
+                        "${qualitySummary.optInt("lossless")} Lossless",
+                        Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
+                }
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     MusicBrowse.entries.forEach { item ->
@@ -490,6 +530,32 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         else { artist = ""; artistName = ""; browse = MusicBrowse.ARTISTS }
                         refresh()
                     }) { Text("‹ Zurück" + listOf(artistName, albumName).filter { it.isNotBlank() }.joinToString(" / ", " · ")) }
+                }
+            }
+            if (section == LibrarySection.MUSIC && browse == MusicBrowse.TRACKS) {
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("album", "artist", "title", "newest", "quality", "bitrate", "duration", "track")
+                        .forEach { order ->
+                            FilterChip(selected = musicSort == order, onClick = {
+                                musicSort = order; refresh()
+                            }, label = { Text(when (order) {
+                                "album" -> "Album/Track"; "artist" -> "Interpret"; "title" -> "Titel"
+                                "newest" -> "Neu"; "quality" -> "Qualität"; "bitrate" -> "Bitrate"
+                                "duration" -> "Länge"; else -> "Tracknummer"
+                            }) })
+                        }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0, 128, 192, 256, 320, 1000).forEach { kbps ->
+                        FilterChip(selected = minBitrate == kbps * 1000, onClick = {
+                            minBitrate = kbps * 1000; refresh()
+                        }, label = { Text(if (kbps == 0) "Alle Bitraten" else "$kbps kbps+") })
+                    }
+                    FilterChip(selected = onlyLossless, onClick = {
+                        onlyLossless = !onlyLossless; refresh()
+                    }, label = { Text("Nur Lossless") })
                 }
             }
             if (section == LibrarySection.MEDIA) {
@@ -693,6 +759,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 }
             }
         }
+    }
+    lyricsEntry?.let { entry ->
+        MusicLyricsDialog(session, entry, onDismiss = { lyricsEntry = null })
     }
     infoEntry?.let { entry ->
         MediaInfoDialog(session, entry, section == LibrarySection.PRIVATE,
