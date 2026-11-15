@@ -17,7 +17,13 @@ import java.util.concurrent.TimeUnit
 
 /** Shared verified-TLS client: API, cover-art, HLS manifests and segments all use the same session. */
 class TromuwelleApplication : Application() {
+    val tlsTrust by lazy { CertificateTrustStore(this) }
     val session by lazy { TromuwelleSession(this) }
+
+    override fun onCreate() {
+        super.onCreate()
+        TlsTrustRegistry.store = tlsTrust
+    }
 }
 
 data class Account(val id: Int = 0, val username: String = "", val role: String = "viewer",
@@ -27,7 +33,7 @@ data class Account(val id: Int = 0, val username: String = "", val role: String 
 
 class TromuwelleSession(private val application: Application) {
     private val cookies = CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER)
-    val client: OkHttpClient = OkHttpClient.Builder()
+    val client: OkHttpClient = TlsTrustRegistry.configure(OkHttpClient.Builder())
         .cookieJar(JavaNetCookieJar(cookies))
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(65, TimeUnit.SECONDS)

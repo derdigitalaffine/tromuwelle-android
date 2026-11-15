@@ -12,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.ImageLoader
 import coil.compose.AsyncImage
+import okhttp3.OkHttpClient
 import coil.request.ImageRequest
 import org.json.JSONObject
 
@@ -21,6 +23,11 @@ import org.json.JSONObject
 fun ExternalSubsonicCover(source: SubsonicSource?, item: JSONObject,
                           modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val loader = remember(context) {
+        ImageLoader.Builder(context)
+            .okHttpClient(TlsTrustRegistry.configure(OkHttpClient.Builder()).build())
+            .build()
+    }
     val artworkId = item.optString("coverArt")
     val url = remember(source?.id, item.optString("id"), artworkId) {
         if (source == null || artworkId.isBlank()) "" else
@@ -33,6 +40,7 @@ fun ExternalSubsonicCover(source: SubsonicSource?, item: JSONObject,
         }
     } else {
         AsyncImage(model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
+            imageLoader = loader,
             contentDescription = item.optString("title").ifBlank { item.optString("name") },
             contentScale = ContentScale.Crop,
             modifier = modifier)

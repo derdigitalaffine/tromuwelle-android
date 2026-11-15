@@ -114,7 +114,8 @@ class SubsonicSourceStore(private val context: Context) {
 
 /** HTTPS-only Subsonic v1.16.1 JSON transport with salted token auth. */
 class SubsonicClient(val source: SubsonicSource) {
-    private val http = OkHttpClient.Builder().cookieJar(CookieJar.NO_COOKIES)
+    private val http = TlsTrustRegistry.configure(OkHttpClient.Builder())
+        .cookieJar(CookieJar.NO_COOKIES)
         .followRedirects(false).followSslRedirects(false).build()
     private fun encode(s: String) = URLEncoder.encode(s, "UTF-8")
     private fun md5(value: String) = MessageDigest.getInstance("MD5")
