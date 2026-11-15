@@ -691,7 +691,6 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             }
                         },
                         onSection = { switchSection(it) },
-                        onFavorites = { switchSection(LibrarySection.MUSIC); onlyFavorites = true },
                         onPodcasts = {
                             streamTab = StreamTab.MUSIC; podcastsOpen = true
                         })

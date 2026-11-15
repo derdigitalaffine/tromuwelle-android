@@ -346,7 +346,7 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                favorites: Set<String>, current: LibraryEntry?,
                onOpen: (LibraryEntry) -> Unit,
                onSection: (LibrarySection) -> Unit,
-               onFavorites: () -> Unit, onPodcasts: () -> Unit) {
+               onPodcasts: () -> Unit) {
     var snapshot by remember(session.server, session.username) { mutableStateOf(HomeSnapshot()) }
     var loading by remember(session.server, session.username) { mutableStateOf(true) }
     var failed by remember(session.server, session.username) { mutableStateOf(false) }
@@ -435,13 +435,13 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
             }
         }
         if (current != null) item {
-            StreamRail("Gerade aktiv", listOf(current), session, onOpen) { }
+            StreamRail("Gerade aktiv", listOf(current), session, onOpen)
         }
         if (recent.isNotEmpty()) item {
             StreamRail("Zuletzt gehört", recent, session, onOpen) { onSection(LibrarySection.RADIO) }
         }
         if (saved.isNotEmpty()) item {
-            StreamRail("Deine Favoriten", saved, session, onOpen, onFavorites)
+            StreamRail("Deine Favoriten", saved, session, onOpen)
         }
         if (snapshot.albums.isNotEmpty()) item {
             StreamRail("Alben entdecken", snapshot.albums, session, onOpen) {
@@ -489,14 +489,14 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
 @Composable
 private fun StreamRail(
     title: String, entries: List<LibraryEntry>, session: TromuwelleSession,
-    onOpen: (LibraryEntry) -> Unit, onMore: () -> Unit
+    onOpen: (LibraryEntry) -> Unit, onMore: (() -> Unit)? = null
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Text(title, modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-            TextButton(onClick = onMore) { Text("Alle") }
+            if (onMore != null) TextButton(onClick = onMore) { Text("Alle") }
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
