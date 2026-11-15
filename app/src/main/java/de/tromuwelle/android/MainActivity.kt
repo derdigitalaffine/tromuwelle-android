@@ -412,7 +412,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     }
 
     if (externalPage) {
-        ExternalSubsonicScreen(onClose = { externalPage = false },
+        ExternalSubsonicScreen(player = player, onClose = { externalPage = false },
             onPlay = { source, songs, index ->
                 try {
                     val client = SubsonicClient(source)
