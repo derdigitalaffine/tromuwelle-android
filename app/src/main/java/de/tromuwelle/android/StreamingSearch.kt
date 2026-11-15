@@ -25,7 +25,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun StreamGlobalSearch(session: TromuwelleSession, onBack: () -> Unit,
                        onOpen: (LibrarySection, LibraryEntry) -> Unit,
-                       onSection: (LibrarySection) -> Unit) {
+                       onSection: (LibrarySection) -> Unit,
+                       onFavorite: (LibraryEntry) -> Unit,
+                       isFavorite: (LibraryEntry) -> Boolean) {
     var query by remember { mutableStateOf("") }
     var submitted by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -120,9 +122,9 @@ fun StreamGlobalSearch(session: TromuwelleSession, onBack: () -> Unit,
                             }
                         }
                         items(entries, key = { section.name + ":" + it.kind.name + ":" + it.id }) { entry ->
-                            StreamTrackRow(session, entry, favorite = false,
-                                onOpen = { onOpen(section, entry) }, onFavorite = {},
-                                onInfo = null)
+                            StreamTrackRow(session, entry, favorite = isFavorite(entry),
+                                onOpen = { onOpen(section, entry) },
+                                onFavorite = { onFavorite(entry) }, onInfo = null)
                         }
                     }
                 }

@@ -175,6 +175,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var profileOpen by remember { mutableStateOf(false) }
     var audioSheetOpen by remember { mutableStateOf(false) }
     var globalSearchOpen by remember { mutableStateOf(false) }
+    var podcastsOpen by remember { mutableStateOf(false) }
+    var activePodcast by remember { mutableStateOf<JSONObject?>(null) }
+    var transcriptOpen by remember { mutableStateOf(false) }
     var advancedFiltersOpen by remember { mutableStateOf(false) }
     var videoSelection by remember { mutableStateOf<LibraryEntry?>(null) }
     var browse by remember { mutableStateOf(MusicBrowse.TRACKS) }
@@ -221,6 +224,19 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         while (isActive) {
             delay(5000)
             val item = player?.currentMediaItem
+            val episode = activePodcast
+            if (connected && episode != null && item?.mediaId ==
+                "PODCAST:" + episode.optString("id") && player != null) {
+                val seconds = player.currentPosition.coerceAtLeast(0L) / 1000.0
+                val finished = player.playbackState == Player.STATE_ENDED ||
+                    (episode.optDouble("duration") > 0 &&
+                    seconds >= episode.optDouble("duration") - 12)
+                try {
+                    withContext(Dispatchers.IO) {
+                        TromuPodcasts(session).progress(episode.optString("id"), seconds, finished)
+                    }
+                } catch (_: Exception) { /* Progress retries at the next interval. */ }
+            }
             if (connected && item != null && item.mediaId.isNotBlank() &&
                 !item.mediaId.startsWith("TV:") && !item.mediaId.startsWith("RADIO:")) {
                 val pos = player.currentPosition + playbackStartMs
@@ -336,6 +352,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     }
 
     fun switchSection(next: LibrarySection) {
+        podcastsOpen = false
+        globalSearchOpen = false
         section = next
         streamTab = when (next) {
             LibrarySection.MUSIC -> StreamTab.MUSIC
@@ -580,6 +598,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         StreamScaffold(
             tab = streamTab,
             onTab = { target ->
+                globalSearchOpen = false
+                podcastsOpen = false
                 if (target == StreamTab.HOME) {
                     streamTab = StreamTab.HOME
                 } else {
@@ -593,7 +613,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     switchSection(next)
                 }
             },
-            onSearch = { globalSearchOpen = true },
+            onSearch = { globalSearchOpen = true; podcastsOpen = false },
             onProfile = { profileOpen = true },
             current = current,
             player = player,
@@ -605,12 +625,49 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 current = null; playbackError = ""; audioSheetOpen = false
             }
         ) { innerPadding ->
-            if (streamTab == StreamTab.HOME) {
+            if (globalSearchOpen) {
+                Box(Modifier.fillMaxSize().padding(innerPadding)) {
+                    StreamGlobalSearch(session, onBack = { globalSearchOpen = false },
+                        onOpen = { type, entry ->
+                            globalSearchOpen = false; switchSection(type); openEntry(entry)
+                        },
+                        onSection = { switchSection(it); globalSearchOpen = false },
+                        onFavorite = { toggleFavorite(it) },
+                        isFavorite = { (it.kind.name + ":" + it.id) in favorites })
+                }
+            } else if (podcastsOpen) {
+                Box(Modifier.fillMaxSize().padding(innerPadding)) {
+                    StreamPodcasts(session, onBack = { podcastsOpen = false },
+                        onPlay = { episode ->
+                            try {
+                                val ctl = player ?: error("Player wird gestartet, bitte erneut versuchen.")
+                                val media = TromuPodcasts(session).mediaItem(episode)
+                                ctl.setMediaItem(media)
+                                ctl.prepare()
+                                val position = (episode.optDouble("position").coerceAtLeast(0.0) * 1000).toLong()
+                                if (position > 0) ctl.seekTo(position)
+                                ctl.play()
+                                activePodcast = episode
+                                current = LibraryEntry("podcast:" + episode.optString("id"),
+                                    episode.optString("title"), episode.optString("feed_title"),
+                                    EntryKind.TRACK, duration = episode.optLong("duration"),
+                                    artwork = episode.optString("image").ifBlank {
+                                        episode.optString("feed_image") }.takeIf {
+                                        it.startsWith("https://") } ?: "")
+                                playbackError = ""
+                                audioSheetOpen = true
+                            } catch (e: Exception) { playbackError = e.message ?: "Abspielen fehlgeschlagen." }
+                        })
+                }
+            } else if (streamTab == StreamTab.HOME) {
                 Box(Modifier.fillMaxSize().padding(innerPadding)) {
                     StreamHome(session, recent.toList(), favorites.toSet(), current,
                         onOpen = { openEntry(it) },
                         onSection = { switchSection(it) },
-                        onFavorites = { switchSection(LibrarySection.MUSIC); onlyFavorites = true })
+                        onFavorites = { switchSection(LibrarySection.MUSIC); onlyFavorites = true },
+                        onPodcasts = {
+                            streamTab = StreamTab.MUSIC; podcastsOpen = true
+                        })
                 }
             } else Column(Modifier.fillMaxSize().padding(innerPadding)) {
                 StreamSectionTitle(
@@ -642,10 +699,20 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             "Reguläre Mediathek" else "Private 18+-Bibliothek") })
                     }
                 }
-                if (section == LibrarySection.MUSIC && session.account.managed) {
-                    TextButton(onClick = { playlistsPage = true },
-                        modifier = Modifier.padding(start = 8.dp)) {
-                        Text("Meine Playlists")
+                if (section == LibrarySection.MUSIC) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        AssistChip(onClick = { podcastsOpen = true },
+                            label = { Text("Podcasts") },
+                            leadingIcon = {
+                                Icon(androidx.compose.material.icons.Icons.Rounded.Headphones,
+                                    contentDescription = null, modifier = Modifier.size(17.dp))
+                            })
+                        AssistChip(onClick = { externalPage = true },
+                            label = { Text("Weitere Musikserver") })
+                        if (session.account.managed) AssistChip(
+                            onClick = { playlistsPage = true },
+                            label = { Text("Meine Playlists") })
                     }
                 }
                 if (playbackError.isNotBlank()) {
@@ -903,6 +970,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 TextButton(onClick = { profileOpen = false; externalPage = true }) {
                     Text("Weitere Musikserver · OpenSubsonic")
                 }
+                TextButton(onClick = {
+                    profileOpen = false; streamTab = StreamTab.MUSIC; podcastsOpen = true
+                }) { Text("Podcasts & Abonnements") }
                 if (session.account.managed) TextButton(onClick = {
                     profileOpen = false; playlistsPage = true
                 }) { Text("Meine Playlists") }
@@ -945,8 +1015,21 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 }
                 NativePlayerControls(player, isLive = current?.kind == EntryKind.RADIO,
                     isAudio = true, onPip = onPip)
+                if (activePodcast != null &&
+                    player.currentMediaItem?.mediaId == "PODCAST:" + activePodcast?.optString("id")) {
+                    if (activePodcast?.optString("transcript_url").orEmpty().isNotBlank()) {
+                        Button(onClick = { transcriptOpen = true; audioSheetOpen = false },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text("Transkript im Player anzeigen")
+                        }
+                    }
+                    Text("Fortschritt wird automatisch im Tromuwelle-Server gespeichert.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (current?.kind == EntryKind.TRACK &&
-                    current?.id?.startsWith("ext:") != true) {
+                    current?.id?.startsWith("ext:") != true &&
+                    current?.id?.startsWith("podcast:") != true) {
                     Button(onClick = { lyricsEntry = current; audioSheetOpen = false },
                         modifier = Modifier.fillMaxWidth()) { Text("Liedtext anzeigen") }
                 }
@@ -966,6 +1049,16 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             },
             onFavorite = { toggleFavorite(entry) },
             favorite = (entry.kind.name + ":" + entry.id) in favorites)
+    }
+    if (transcriptOpen && activePodcast != null) {
+        Dialog(onDismissRequest = { transcriptOpen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background) {
+                StreamPodcastTranscript(session, activePodcast!!, player,
+                    onClose = { transcriptOpen = false; audioSheetOpen = true })
+            }
+        }
     }
     lyricsEntry?.let { entry ->
         MusicLyricsDialog(session, entry, player = player, onDismiss = { lyricsEntry = null })

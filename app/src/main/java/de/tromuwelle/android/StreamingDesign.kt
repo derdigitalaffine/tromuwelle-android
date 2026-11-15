@@ -339,7 +339,7 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                favorites: Set<String>, current: LibraryEntry?,
                onOpen: (LibraryEntry) -> Unit,
                onSection: (LibrarySection) -> Unit,
-               onFavorites: () -> Unit) {
+               onFavorites: () -> Unit, onPodcasts: () -> Unit) {
     var snapshot by remember(session.server, session.username) { mutableStateOf(HomeSnapshot()) }
     var loading by remember(session.server, session.username) { mutableStateOf(true) }
     var failed by remember(session.server, session.username) { mutableStateOf(false) }
@@ -406,6 +406,25 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text("Wir laden deine Mediensammlung …",
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Surface(onClick = onPodcasts,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(18.dp)) {
+                Row(Modifier.padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Headphones, null,
+                        modifier = Modifier.size(35.dp), tint = Accent)
+                    Spacer(Modifier.width(13.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Podcasts & Sendungen", fontWeight = FontWeight.ExtraBold)
+                        Text("Abonnements, neue Folgen und Transkripte",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.Rounded.ChevronRight, null)
+                }
             }
         }
         if (current != null) item {
