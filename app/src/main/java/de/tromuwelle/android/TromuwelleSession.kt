@@ -10,6 +10,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.net.CookieManager
 import java.net.CookiePolicy
+import java.net.HttpCookie
+import java.net.URI
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
@@ -33,12 +35,64 @@ class TromuwelleSession(private val application: Application) {
         .build()
 
     private val prefs = application.getSharedPreferences("connection", 0)
+    private val vault = SecureSessionStore(application)
     var server: String = prefs.getString("server", "") ?: ""
         private set
     var username: String = prefs.getString("username", "") ?: ""
         private set
     var account: Account = Account()
         private set
+    private var restoredCookie = false
+
+    init {
+        vault.load()?.let { record ->
+            try {
+                val origin = normalizeServerAddress(record.optString("server"))
+                require(origin == server) { "Serveradresse hat sich geändert." }
+                val jar = record.optJSONArray("cookies") ?: org.json.JSONArray()
+                val now = System.currentTimeMillis()
+                for (i in 0 until jar.length()) {
+                    val value = jar.getJSONObject(i)
+                    val remaining = (value.optLong("expires_at") - now) / 1000L
+                    if (remaining < 1) continue
+                    val cookie = HttpCookie(value.getString("name"), value.getString("value")).apply {
+                        domain = value.optString("domain").ifBlank { URI(origin).host }
+                        path = value.optString("path", "/")
+                        secure = value.optBoolean("secure")
+                        isHttpOnly = value.optBoolean("http_only")
+                        maxAge = remaining
+                    }
+                    cookies.cookieStore.add(URI(origin), cookie)
+                    restoredCookie = true
+                }
+            } catch (_: Exception) {
+                cookies.cookieStore.removeAll()
+                vault.clear()
+            }
+        }
+    }
+
+    /** A stored cookie never grants UI access before fresh backend validation. */
+    fun restoreVerified(): Boolean {
+        if (!restoredCookie || server.isBlank()) return false
+        return try {
+            val result = JSONObject(get("/api/auth/status"))
+            if (!result.optBoolean("authenticated")) {
+                forgetLocal()
+                false
+            } else {
+                account = result.account(username)
+                true
+            }
+        } catch (_: Exception) { false }
+    }
+
+    private fun forgetLocal() {
+        cookies.cookieStore.removeAll()
+        vault.clear()
+        restoredCookie = false
+        account = Account()
+    }
 
     fun validateServer(input: String): String = normalizeServerAddress(input)
 
@@ -72,6 +126,9 @@ class TromuwelleSession(private val application: Application) {
         username = name.trim()
         account = json.account(username)
         prefs.edit().putString("server", origin).putString("username", username).apply()
+        restoredCookie = true
+        try { vault.save(origin, username, cookies.cookieStore.cookies) }
+        catch (_: Exception) { /* Keystore may be unavailable; in-memory session remains valid. */ }
     }
 
     fun status(inputServer: String): JSONObject = JSONObject(request(
@@ -82,8 +139,7 @@ class TromuwelleSession(private val application: Application) {
         if (server.isNotBlank()) {
             try { request(server, "/api/auth/logout", "POST", "{}") } catch (_: Exception) { }
         }
-        cookies.cookieStore.removeAll()
-        account = Account()
+        forgetLocal()
     }
 
     fun get(path: String): String = request(server, path, "GET", null)
