@@ -25,4 +25,22 @@ class SearchRankingTest {
         assertEquals(listOf("Jazz"), searchHistoryAfter(listOf("Jazz"), " "))
         assertEquals(8, searchHistoryAfter((1..12).map { "query$it" }, "Fresh").size)
     }
+    @Test fun searchScopeHitsOnlySelectedEndpointsAndNeverPrivateLibrary() {
+        assertEquals(
+            listOf(LibrarySection.MUSIC, LibrarySection.MEDIA,
+                LibrarySection.RADIO, LibrarySection.TV),
+            sectionsForSearchScope(SearchScope.ALL))
+        assertEquals(listOf(LibrarySection.MUSIC),
+            sectionsForSearchScope(SearchScope.MUSIC))
+        assertEquals(listOf(LibrarySection.MEDIA),
+            sectionsForSearchScope(SearchScope.MEDIA))
+        assertEquals(listOf(LibrarySection.RADIO),
+            sectionsForSearchScope(SearchScope.RADIO))
+        assertEquals(listOf(LibrarySection.TV),
+            sectionsForSearchScope(SearchScope.TV))
+        assertTrue(sectionsForSearchScope(SearchScope.PODCAST).isEmpty())
+        assertTrue(SearchScope.entries.all {
+            LibrarySection.PRIVATE !in sectionsForSearchScope(it)
+        })
+    }
 }
