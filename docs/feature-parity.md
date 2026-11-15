@@ -1,6 +1,6 @@
 # Funktionsabgleich: privates Tromuwelle-main → Android
 
-Referenz: `derdigitalaffine/tromuwelle` `2a85fdf17996379b916ec434d558cf301c677fd2`, read-only analysiert am 15.11.2026. Ziel: `derdigitalaffine/tromuwelle-android` main.
+Referenz: `derdigitalaffine/tromuwelle` `2b5b7f06f88e152f23119a86b0c619ed894a53f0`, read-only analysiert am 15.11.2026. Ziel: `derdigitalaffine/tromuwelle-android` main.
 
 | Bereich / Feature im Hauptrepo | Native Android-Umsetzung | Hinweise |
 |---|---|---|
@@ -14,14 +14,20 @@ Referenz: `derdigitalaffine/tromuwelle` `2a85fdf17996379b916ec434d558cf301c677fd
 | TV-Favoriten, Suche, Sortierung | Ja | Benutzerspezifisch auf dem Gerät |
 | Bild-in-Bild und Vollbild | Ja | Android PiP und eigener Vollbild-Player; Gerätereaktion noch prüfen |
 | Radio-Liste/Import/CRUD | Ja | Admin-Operationen gemäß `/api/radio/*` |
-| Radio-Favoriten, letzte Sender, Genres | Ja | Lokal pro Konto; automatische Wiederverbindung noch eingeschränkt |
+| Radio-Favoriten, letzte Sender, Genres | Ja | Lokal pro Konto, begrenzter Reconnect |
+| Radio-Länder, automatischer Katalogimport | Ja | DE, NL, AT, BE, LU; Admin-Import `/api/radio/catalog/import` |
+| Radio-MP3/AAC/Opus und wählbare Bitraten | Ja | Serverseitiges Transcoding mit 48–320 kbit/s |
 | Musik Interpreten/Alben/Titel/Suche/Pagination | Ja | `/api/music/*` mit `items/total` aus Hauptrepo |
-| Musik-Cover, Playlist/Queue, Shuffle/Repeat, Resume | Ja | MediaSessionService, Coil mit Session-Cookies, lokale Hörposition |
+| Musik-Cover, Queue, Shuffle/Repeat, Resume | Ja | MediaSessionService, Coil mit Session-Cookies, lokale Hörposition |
+| Persönliche Musik-Playlists / Änderung und Reihenfolge | Ja | Serverpersistenz; nur für persönliche Konten |
+| Musik Qualitätsmetadaten, Sortierung, Lossless und Bitrate | Ja | `/api/music/quality`, Filter `sort/min_bitrate/lossless` |
+| Lyrics auf Abruf | Ja | `/api/music/lyrics/{song_id}` – kein Massendownload |
 | Musik-Scanner und Status | Ja | Start, Stopp, manueller Status |
 | Ordner-Mediathek, Suche, Indexierung | Ja | Medienquellen/Index-API, Suche und Filter |
 | Film-Poster, NFO-Metadaten und Untertitel | Ja | Artwork, `/api/media/enrichment`, sidecar WebVTT über Media3 |
 | Original / kompatibles MP4 / Auflösung / Seek | Ja mit Einschränkung | Serverstart `start=`; kein gewöhnlicher Seek während transcodierter Pipe |
 | Private 18+-Bibliothek, Tags, Genre/Qualität | Ja | Separate Navigation, `category=adult`, freigegebene Quellen |
+| 18+-Tag-Taxonomie und Synonyme | Ja | Admin-CRUD `/api/media/adult/taxonomy` |
 | Benutzer-/Kontopasswörter, Subsonic-App-Password | Ja | Reauthentisierung, Erneuerung, kein Klartext auf Datenträger |
 | API-Keys erstellen, anzeigen, widerrufen | Ja | Neue Schlüssel nur einmal sichtbar |
 | M3U/EPG/XMLTV für Jellyfin und OpenSubsonic `/rest` | Serverseitig | Keine Duplizierung auf Android nötig |
@@ -36,9 +42,9 @@ Die Zeilen mit „Ja“ bezeichnen **implementierte Funktionswege**, nicht eine 
 
 - `/api/auth/status`, `/api/auth/setup`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/protection`, `/api/users/*`, `/api/account/*`
 - `/api/channels`, `/hls/{id}/master.m3u8`, `/api/playlists/*`, `/api/settings*`
-- `/api/radio/stations`, `/api/radio/stream/{id}`, `/api/radio/import`
-- `/api/music/tracks|artists|albums`, `/api/music/stream/{id}`, `/api/music/cover/{id}`, `/api/music/status|scan`
-- `/api/media/list|search|file|info|enrichment|thumbnail|artwork|subtitle|index`, `/api/media/adult/facets|tags`
+- `/api/radio/stations`, `/api/radio/stream/{id}` mit `bitrate/codec`, `/api/radio/import`, `/api/radio/catalog/import`
+- `/api/music/tracks|artists|albums`, `/api/music/quality`, `/api/music/playlists/*`, `/api/music/lyrics/{id}`, `/api/music/stream/{id}`, `/api/music/cover/{id}`, `/api/music/status|scan`
+- `/api/media/list|search|file|info|enrichment|thumbnail|artwork|subtitle|index`, `/api/media/adult/facets|tags|taxonomy`
 
 ## Technische Abnahme
 
