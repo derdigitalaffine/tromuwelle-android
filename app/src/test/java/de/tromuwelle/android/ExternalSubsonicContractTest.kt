@@ -33,6 +33,15 @@ class ExternalSubsonicContractTest {
         assertEquals(64000L, rows[3].timeMs)
         assertEquals("Zwei", rows[1].text)
     }
+    @Test fun openSubsonicStructuredLyricsAreTimestamped() {
+        val result = org.json.JSONObject(
+            """{"lyricsList":{"structuredLyrics":[{"line":[{"start":1200,"value":"Eins"},{"start":3400,"value":"Zwei"}]}]}}"""
+        )
+        val lines = openSubsonicLyricLines(result)
+        assertEquals(2, lines.size)
+        assertEquals(3400L, lines[1].timeMs)
+        assertEquals("Zwei", lines[1].text)
+    }
     @Test fun lrcPlainTextHasNoTimestampedLines() {
         assertTrue(parseSyncedLyrics("Only plain lyrics\nNo timestamps").isEmpty())
     }

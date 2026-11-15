@@ -1,6 +1,6 @@
 # Funktionsabgleich: privates Tromuwelle-main → Android
 
-Referenz: `derdigitalaffine/tromuwelle` `2b5b7f06f88e152f23119a86b0c619ed894a53f0`, read-only analysiert am 15.11.2026. Ziel: `derdigitalaffine/tromuwelle-android` main.
+Referenz: `derdigitalaffine/tromuwelle` `086e8eb69f964681544b66663e61e6cd9d6e3195`, read-only analysiert am 15.11.2026. Ziel: `derdigitalaffine/tromuwelle-android` main.
 
 | Bereich / Feature im Hauptrepo | Native Android-Umsetzung | Hinweise |
 |---|---|---|
@@ -55,3 +55,22 @@ Die Zeilen mit „Ja“ bezeichnen **implementierte Funktionswege**, nicht eine 
 5. Medienoriginal, inkompatibler Codec, Servertranscoding mit Zeitstart, Header-/Cookie-Rotation
 6. App-Prozess beenden → Keystore-Wiederherstellung → Berechtigungsprüfung → Abmeldung
 7. Mit stabilem Keystore dauerhaft signierte, aktualisierbare APK für produktiven Einsatz
+
+## Erweiterungen v0.3.0-beta.1
+
+| Webapp / Plattform | Android | Stand |
+|---|---|---|
+| Externe, eigenständige Subsonic-Server | Ja, zusätzlich | Quellen mit eigenem HTTPS-Login und Gerätverschlüsselung, nicht nur Tromuwelle-Subsonic |
+| Externe Künstler-, Alben-, Titellisten und Suche | Ja | GetArtists, GetArtist, GetAlbumList2, Search3, GetAlbum |
+| Externe Playlists und Favoriten | Ja | Browsing, Erstellen, Löschen, Song hinzufügen/entfernen, Star/Unstar. Playlist-Umbenennen/Drag-Order bei Fremdservern nicht garantiert |
+| Externe Musik-Cover und Downloads | Ja | OpenSubsonic getCoverArt/download über HTTPS |
+| Eigene und externe synchronisierte Lyrics | Ja | LRC / strukturierte Lyrics, aktiver Text, ein-/ausschaltbare Markierung |
+| Android Auto Headunit | Audio | MediaLibraryService, Musik und Radio, keine Videotitel |
+| Android Auto Video | **Nicht unterstützt** | Android-Auto-Plattform untersagt Video-Apps als Projektion |
+| Android Automotive OS – Video | Parked-only | Zweites APK-Flavor mit appCategory video und OS-Fahrsperren, Geräteprüfung ausstehend |
+| Android Auto-Sprachsuche | Ja | Audio-Suche, MediaStore MEDIA_PLAY_FROM_SEARCH |
+| Eigenes Video-Dialogfenster statt Player oberhalb langer Listen | Ja | Bibliothek bleibt im Hintergrund und an ihrer Scrollposition |
+| 18+-Kategorien vollständig neu zuweisen | Ja | `POST /api/media/adult/reindex`; UI mit Status und Zählern |
+| Android MediaBrowser kompatible Wiedergabe | Ja | Media3 MediaLibraryService und MediaBrowserService-Adapter |
+| Echte DHU-/AAOS-Emulator-/Fahrzeugtests | **Offen** | GitHub CI baut und testet beide Varianten, testet kein Fahrzeug |
+| Server- und plattformübergreifende Fortschritts-/Favoritensynchronisation | Teilweise | Lokale Favoriten und Fortschritt; externe Stars serverseitig |

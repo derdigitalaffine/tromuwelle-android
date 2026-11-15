@@ -65,9 +65,9 @@ jobs:
           prerelease: true
           generate_release_notes: true
           body: |
-            Installierbare Android-APK (API 26+), mit Android-Debugschlüssel signiert.
-            Vorabversion zur privaten Installation, keine Play-Store-/Produktionssignierung.
+            Zwei Android-APKs (API 26+): Android Auto (Audio) und AAOS (Video nur im Parkmodus).
+            Vorabversion mit temporärem Debugschlüssel, keine produktive Signatur; Updates erfordern ggf. Neuinstallation.
             Der Server benötigt HTTPS; eine private CA muss auf dem Gerät installiert sein.
-            Live-Ende-zu-Ende-Tests mit einem echten Tromuwelle-Server und Android-Gerät stehen noch aus.
+            Gerätetests (Android Auto DHU und Android Automotive OS Emulator/Fahrzeug) sowie echte Subsonic-Servertests stehen noch aus.
           files: publish/*.apk
           fail_on_unmatched_files: true
