@@ -116,6 +116,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var playbackError by remember { mutableStateOf("") }
     var current by remember { mutableStateOf<LibraryEntry?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
+    var radioRetries by remember { mutableIntStateOf(0) }
     var fullscreen by remember { mutableStateOf(false) }
     var compatible by remember { mutableStateOf(false) }
     var quality by remember { mutableIntStateOf(1080) }
@@ -182,6 +183,17 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             override fun onIsPlayingChanged(value: Boolean) { isPlaying = value }
             override fun onPlayerError(errorValue: androidx.media3.common.PlaybackException) {
                 playbackError = errorValue.localizedMessage ?: "Wiedergabe fehlgeschlagen"
+                if (connected && current?.kind == EntryKind.RADIO && radioRetries < 3) {
+                    val retryDelay = listOf(1200L, 3500L, 9000L)[radioRetries]
+                    radioRetries++
+                    scope.launch {
+                        delay(retryDelay)
+                        if (connected && current?.kind == EntryKind.RADIO) {
+                            player?.prepare()
+                            player?.play()
+                        }
+                    }
+                }
             }
             override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
                 if (item != null) playbackError = ""
@@ -256,7 +268,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 .map { it.mediaItem(session) } else listOf(entry.mediaItem(session, compatible, quality, startSeconds))
             val position = if (entry.kind == EntryKind.TRACK)
                 entries.filter { it.kind == EntryKind.TRACK }.indexOf(entry).coerceAtLeast(0) else 0
-            val resume = if (useTranscode) 0L else saved
+            val closeToEnd = entry.duration > 0 && saved >= entry.duration * 1000 - 30_000
+            val resume = if (useTranscode || closeToEnd) 0L else saved
             if (entry.kind == EntryKind.FILE && !entry.audio) {
                 scope.launch {
                     val item = try {
@@ -275,6 +288,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 controller.play()
             }
             current = entry
+            radioRetries = 0
             if (entry.kind == EntryKind.RADIO) {
                 recent.remove(entry.id); recent.add(0, entry.id)
                 while (recent.size > 15) recent.removeAt(recent.lastIndex)
