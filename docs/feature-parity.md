@@ -97,3 +97,21 @@ Die Zeilen mit „Ja“ bezeichnen **implementierte Funktionswege**, nicht eine 
 - Serverseitiger Gegenpart: Hauptrepo Caddyfile `default_sni` mit `TROMUWELLE_CERT_IP`; muss auf dem **laufenden** Server übernommen und neu gestartet werden.
 - Keine unsicheren Verbindungen, keine globale `trustAll`-Ausnahme. Die optionale Zertifikatsfreigabe bleibt explizit und auf SHA-256-Fingerabdruck begrenzt.
 - Neuer JVM-Test `TlsConnectionDiagnosticTest` deckt OpenSSL- und Android-Fehlerbezeichnungen ab.
+
+## Native Redesign- und Podcast-Abgleich v0.4.0-beta.1
+
+| Bereich | Android-Funktionsweg | Echte Server-API |
+|---|---|---|
+| Home-Rails und Cover | Neue Startseite, Poster und Alben | Kanäle, Radio, Musik und normale Medien-Suche |
+| Musik und Playlists | Covergrid, Songliste, NativePlayerControls und serverseitige Lyrics | /api/music/* |
+| Videos und Ordner | Raster, Details, Original/Kompatibel, Metadaten, Download | /api/media/* |
+| Radio und Live-TV | Eigene Tab-Navigation, Sortierung, Player | /api/radio/stations, /api/channels |
+| Globale Suche | Musik, Radio, TV, reguläre Videos; 18+ ausgeschlossen | /api/music/*, /api/media/search, /api/radio/stations, /api/channels |
+| Podcasts-Sendungen und Entdecken | RSS-Abos, Feed-Detail und Suche | /api/podcasts/feeds, /api/podcasts/directory |
+| Podcast-Folgen | Filtern, Blättern, Abspielen, Fortschritt und Download auf Server | /api/podcasts/episodes und /progress, /stream, /download |
+| Podcast-Transkripte | 80er-Seiten im Player, Zeitmarkierungen, Scroll-Follow, Springen | /api/podcasts/episodes/{id}/transcript |
+| Sicherheit, Verwaltung | Legacy- und Nutzerlogin, Adminfunktionen, selbstsignierte Zertifikat-Pins | /api/auth/*, /api/users/* |
+| Android Auto | Audiomedienbibliothek, nicht Video-Projektion | MediaLibraryService |
+| Android Automotive OS | Video nur bei Fahrzeugstillstand | Plattformbeschränkungen bleiben bestehen |
+
+Offen: echte Gerätetests, Podcast-E2E mit einem realen Feed, SNI/Caddy-TLS mit Realgerät und dauerhaft gültige Release-Signatur. Die Tabelle beschreibt implementierte Pfade, keine Hardware-Zertifizierung.

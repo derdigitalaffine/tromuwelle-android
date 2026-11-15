@@ -4,6 +4,24 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 
 **Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (Hauptrepo-Stand `086e8eb69f96`).
 
+## Native Streaming-Oberfläche ab v0.4.0-beta.1
+
+Die neue Jetpack-Compose-Oberfläche ist im Bedienkonzept an Musik-, Film- und Videostreamingdienste angelehnt; Grafik und Markenidentität bleiben eigenständig. Statt technischer Navigation stehen die Inhalte im Vordergrund.
+
+- Durchgängiges dunkles Material-3-Design mit Türkis-/Indigo-Akzenten, großzügigen Postern, Albumcovern und horizontalen Medienreihen.
+- Fünf Hauptbereiche: Start, Musik, Videos, Radio und Live-TV. Kontoverwaltung, zusätzliche Subsonic-Server und Administration sind im Profilmenü.
+- Startseite lädt echte Alben, Titel, Videos, Radio und TV direkt über die vorhandenen Tromuwelle-APIs. Keine erfundenen Empfehlungen. Private 18+-Inhalte erscheinen nicht im Home-Feed.
+- Globale Suche über Musik, normale Mediathek, Radio und TV; private Inhalte werden explizit ausgeschlossen.
+- Schlanker persistenter Mini-Player; großer Audio-Player mit Lyrics, nativer Media3-Steuerung und eingebetteten Podcasts-Transkripten. Eigene Videodetails mit Poster, Auflösung, Favorit, Download und Dateiinformationen.
+- Musiklisten als Zeilen, Alben und Künstler als Coverkarten, Video- und Ordnerbibliothek als Grid. Alle bekannten Tromuwelle-Funktionen für Streams, Formatwahl, Download, Qualität, Filtersortierung, Rechte und persönliche Playlists bleiben angebunden.
+- Eigener nativer Podcast-Bereich: Sendungsgrid, Folgen pro Sendung, Verzeichnissuche, RSS-Abonnements, Statusfilter, Serverdownloads, Streaming, serverseitige Hörstände und paginierte zeitgesteuerte Transkripte im Player.
+
+### Technische API-Bindung
+
+Die neue UI verwendet unverändert die produktiven Endpunkte für Live-TV, Radio, Musik, Mediathek und Benutzer. Für Podcasts sind die Endpunkte unter /api/podcasts/feeds, /api/podcasts/episodes, /api/podcasts/directory und /api/podcasts/episodes/{id}/transcript auf einer aktuellen Tromuwelle-Serverversion erforderlich. Keine simulierten Medienkataloge und keine global abgeschaltete TLS-Zertifikatsprüfung.
+
+CI prüft Kotlin-Kompilierung, Unit-Tests, Lint und die beiden APKs. Echte Server- und Geräte-End-to-End-Tests, tatsächliche Android-Auto-/AAOS-Headunit-Prüfung sowie ein stabiler Release-Signaturschlüssel sind weiterhin offen. Die UI-Integration bedeutet nicht automatisch 100 % Parität mit jeder neu hinzugefügten Webfunktion.
+
 ## Funktionen
 
 - **Live-TV:** Multicast- und Playlist-Sender, Suche, A–Z/HD-Sortierung, Favoriten, adaptiver HLS-Player, Videovollbild, PiP, Live-Kante, maximale Videoauflösung, Tonspuren und Untertitel.
@@ -25,11 +43,11 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 5. Bei bisher völlig unkonfiguriertem Server „Server / Ersteinrichtung prüfen“ und anschließend Administrator mit mindestens 12-stelligem Passwort und Setup-Token anlegen. Bei aktivem bisherigen Passwortschutz reicht zur Migration das **bestehende Administrationspasswort** (anstelle eines Tokens); neuer Benutzername und neues Passwort werden selbst gewählt.
 6. Bei gültiger Session stellt die App den Login beim nächsten Start automatisch wieder her; der Server bestätigt zuvor die aktuelle Berechtigung.
 
-## APK – v0.3.2-beta.1
+## APK – v0.4.0-beta.1
 
 Es gibt zwei separat installierbare Varianten:
-- **`tromuwelle-android-v0.3.2-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
-- **`tromuwelle-automotive-video-v0.3.2-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
+- **`tromuwelle-android-v0.4.0-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
+- **`tromuwelle-automotive-video-v0.4.0-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
 
 Video auf Android Auto ist **nicht** verfügbar. Dieser Unterschied ist eine Plattformbeschränkung, kein fehlender Schalter. Diese APKs verwenden unterschiedliche Anwendungs-IDs; die AAOS-Version ersetzt nicht die Handy-Version.
 
