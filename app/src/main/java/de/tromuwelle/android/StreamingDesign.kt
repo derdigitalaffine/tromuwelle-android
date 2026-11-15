@@ -12,6 +12,8 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -345,7 +347,8 @@ private data class HomeSnapshot(
     val tracks: List<LibraryEntry> = emptyList(),
     val movies: List<LibraryEntry> = emptyList(),
     val radio: List<LibraryEntry> = emptyList(),
-    val tv: List<LibraryEntry> = emptyList()
+    val tv: List<LibraryEntry> = emptyList(),
+    val podcasts: List<LibraryEntry> = emptyList()
 )
 
 @Composable
@@ -358,6 +361,10 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
     var loading by remember(session.server, session.username) { mutableStateOf(true) }
     var failed by remember(session.server, session.username) { mutableStateOf(false) }
     var generation by remember { mutableIntStateOf(0) }
+    val homeContext = LocalContext.current
+    val progressPrefs = remember(homeContext) {
+        homeContext.getSharedPreferences("favorites", 0)
+    }
     LaunchedEffect(session, session.server, session.username, generation) {
         loading = true; failed = false
         val next = withContext(Dispatchers.IO) {
@@ -373,7 +380,25 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                 movies = safe(LibrarySection.MEDIA, sort = "newest")
                     .filter { it.kind == EntryKind.FILE && !it.audio },
                 radio = safe(LibrarySection.RADIO),
-                tv = safe(LibrarySection.TV)
+                tv = safe(LibrarySection.TV),
+                podcasts = try {
+                    TromuPodcasts(session).episodes(limit = 12).first.map { episode ->
+                        LibraryEntry(
+                            id = "podcast:" + episode.optString("id"),
+                            title = episode.optString("title"),
+                            description = episode.optString("feed_title"),
+                            kind = EntryKind.TRACK,
+                            duration = episode.optLong("duration"),
+                            artwork = episode.optString("image")
+                                .ifBlank { episode.optString("feed_image") }
+                                .takeIf { it.startsWith("https://") } ?: ""
+                        )
+                    }
+                } catch (e: Exception) {
+                    if (e !is ServerException || e.status !in listOf(403, 404))
+                        errors++
+                    emptyList()
+                }
             )
             s to errors
         }
@@ -385,41 +410,74 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
         .sortedBy { recentRadioIds.indexOf(it.id) }
     val saved = (snapshot.albums + snapshot.tracks + snapshot.movies + snapshot.radio + snapshot.tv)
         .filter { it.kind.name + ":" + it.id in favorites }.distinctBy { it.kind.name + ":" + it.id }
+    val inProgress = snapshot.movies.filter { entry ->
+        val key = "resume:" + session.server + ":" + session.username + ":FILE:" + entry.id
+        val pos = progressPrefs.getLong(key, 0L)
+        pos > 30_000 && (entry.duration <= 0 || pos < entry.duration * 1000 - 20_000)
+    }
+    val featured = snapshot.movies.firstOrNull() ?: snapshot.albums.firstOrNull()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
-                .clip(RoundedCornerShape(24.dp))
+                .height(302.dp).clip(RoundedCornerShape(27.dp))
                 .background(Brush.linearGradient(listOf(Color(0xFF173E3D),
-                    Color(0xFF242A58), Color(0xFF111722))))
-                .padding(23.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("DEINE STREAMING-WELT", style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Black, color = Accent)
-                    Text("Alles, was du\nsehen & hören willst.",
+                    Color(0xFF242A58), Color(0xFF111722))))) {
+                if (featured != null && featured.artwork.isNotBlank()) {
+                    AuthenticatedArtwork(session, featured, Modifier.fillMaxSize().alpha(0.57f))
+                }
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                    0.0f to Color.Black.copy(alpha = 0.05f),
+                    0.37f to Color(0xFF0B1019).copy(alpha = 0.34f),
+                    1.0f to Color(0xFF070A11).copy(alpha = 0.98f))))
+                Column(Modifier.align(Alignment.BottomStart).padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(color = Accent.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(8.dp)) {
+                        Text(if (featured != null) "DEINE MEDIEN · AUS DER SAMMLUNG"
+                            else "TROMUWELLE · DEIN ZUHAUSE",
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Accent, fontWeight = FontWeight.Bold)
+                    }
+                    Text(featured?.title ?: "Alles, was du\nsehen & hören willst.",
                         style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold)
-                    Text("Musik, Filme, Sender und Live-TV direkt von deinem Tromuwelle-Server.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(featured?.description?.ifBlank { "Neu in deiner Medienbibliothek" }
+                        ?: "Musik, Filme, Podcasts und Radio auf deinem eigenen Server.",
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        color = Color(0xFFDCE2EF),
                         style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { onSection(LibrarySection.MUSIC) }) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(onClick = { if (featured != null) onOpen(featured)
+                                           else onSection(LibrarySection.MEDIA) }) {
                             Icon(Icons.Rounded.PlayArrow, null)
                             Spacer(Modifier.width(5.dp))
-                            Text("Musik entdecken")
+                            Text(if (featured != null) "Entdecken" else "Mediathek")
                         }
-                        OutlinedButton(onClick = { onSection(LibrarySection.MEDIA) }) {
-                            Text("Videos")
+                        OutlinedButton(onClick = { onSection(LibrarySection.MUSIC) }) {
+                            Text("Musik")
                         }
                     }
                 }
             }
         }
         if (loading) item {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("Wir laden deine Mediensammlung …",
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 18.dp))
+                Text("Deine Inhalte werden zusammengestellt",
+                    Modifier.padding(horizontal = 18.dp),
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LazyRow(contentPadding = PaddingValues(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(4) {
+                        Box(Modifier.size(154.dp, 172.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant))
+                    }
+                }
             }
         }
         item {
@@ -443,6 +501,15 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
         }
         if (current != null) item {
             StreamRail("Gerade aktiv", listOf(current), session, onOpen)
+        }
+        if (inProgress.isNotEmpty()) item {
+            StreamRail("Weiter ansehen", inProgress, session, onOpen) {
+                onSection(LibrarySection.MEDIA)
+            }
+        }
+        if (snapshot.podcasts.isNotEmpty()) item {
+            StreamRail("Neue Podcastfolgen", snapshot.podcasts, session,
+                onOpen = { onPodcasts() }, onMore = onPodcasts)
         }
         if (recent.isNotEmpty()) item {
             StreamRail("Zuletzt gehört", recent, session, onOpen) { onSection(LibrarySection.RADIO) }
