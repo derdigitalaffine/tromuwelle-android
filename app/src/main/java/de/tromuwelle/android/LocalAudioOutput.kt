@@ -1,6 +1,12 @@
 package de.tromuwelle.android
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import androidx.annotation.OptIn
@@ -34,7 +40,8 @@ object LocalAudioOutput {
 
     fun devices(context: Context): List<AudioDeviceInfo> {
         val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        return audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
+        return try { audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList() }
+            catch (_: SecurityException) { emptyList() }
             .sortedWith(compareBy({ it.type != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER },
                 { it.productName.toString() }))
     }
@@ -78,6 +85,17 @@ fun LocalAudioOutputSheet(onClose: () -> Unit, onCast: () -> Unit) {
     var routes by remember { mutableStateOf(LocalAudioOutput.devices(context)) }
     var selected by remember { mutableStateOf(LocalAudioOutput.selected()) }
     var notice by remember { mutableStateOf("") }
+    var permissionGranted by remember {
+        mutableStateOf(Build.VERSION.SDK_INT < 31 ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
+            PackageManager.PERMISSION_GRANTED)
+    }
+    val bluetoothPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()) { granted ->
+        permissionGranted = granted
+        routes = LocalAudioOutput.devices(context)
+        if (!granted) notice = "Bluetooth-Geräte können ohne Freigabe eingeschränkt angezeigt werden."
+    }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Audioausgabe", style = MaterialTheme.typography.headlineSmall)
@@ -85,6 +103,15 @@ fun LocalAudioOutputSheet(onClose: () -> Unit, onCast: () -> Unit) {
             "Android kann bei Anrufen oder einer neuen Bluetooth-Verbindung die Route ändern.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!permissionGranted && Build.VERSION.SDK_INT >= 31) {
+            Button(onClick = {
+                bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Rounded.Bluetooth, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Bluetooth-Audiogeräte freigeben")
+            }
+        }
         OutlinedButton(onClick = { routes = LocalAudioOutput.devices(context) },
             modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Rounded.Refresh, null)
