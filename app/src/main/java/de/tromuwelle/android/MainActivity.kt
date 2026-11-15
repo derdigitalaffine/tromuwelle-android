@@ -985,7 +985,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     } // end connected screen
     if (profileOpen && connected) {
         ModalBottomSheet(onDismissRequest = { profileOpen = false }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Dein Tromuwelle", style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.ExtraBold)
@@ -1025,7 +1026,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     if (audioSheetOpen && player != null) {
         ModalBottomSheet(onDismissRequest = { audioSheetOpen = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Column(Modifier.fillMaxWidth().padding(22.dp),
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 val playingTitle = player.mediaMetadata.title?.toString()
                     .orEmpty().ifBlank { current?.title.orEmpty() }

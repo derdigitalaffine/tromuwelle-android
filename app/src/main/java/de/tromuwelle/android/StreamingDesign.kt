@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -290,10 +291,16 @@ fun StreamLibraryListing(
     val grid = section == LibrarySection.MEDIA || section == LibrarySection.PRIVATE ||
         section == LibrarySection.TV || section == LibrarySection.RADIO ||
         entries.firstOrNull()?.kind in listOf(EntryKind.ALBUM, EntryKind.ARTIST)
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val columns = when {
+        screenWidth >= 900 -> 4
+        screenWidth >= 600 -> 3
+        else -> 2
+    }
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 18.dp),
         verticalArrangement = Arrangement.spacedBy(if (grid) 12.dp else 0.dp)) {
         if (grid) {
-            val chunks = entries.chunked(2)
+            val chunks = entries.chunked(columns)
             items(chunks.size) { row ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -302,7 +309,7 @@ fun StreamLibraryListing(
                             Modifier.weight(1f), wide = entry.kind == EntryKind.FILE ||
                                 entry.kind == EntryKind.TV)
                     }
-                    if (chunks[row].size == 1) Spacer(Modifier.weight(1f))
+                    repeat(columns - chunks[row].size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         } else {
