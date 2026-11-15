@@ -146,3 +146,10 @@ Offen: echte Gerätetests, Podcast-E2E mit einem realen Feed, SNI/Caddy-TLS mit 
 | Private Bibliothek | Kein Eintrag der aktiven privaten Wiedergabe in öffentlicher Home oder Mini-Player außerhalb Private | Kein globales Erwachsenen-Content-Discovering |
 | Podcast-Cover | Adaptive 2–5-Spalten, Directory-/Feed-Bilder, asynchrones Suchen | RSS/Apple-Directory-Cover nur via HTTPS |
 | Hardwareabnahme | Android/AAOS Debug-APKs, JVM-Tests und Android-Lint in CI | Google Cast, Bluetooth-Route, Bildschirmgrößen und reale TLS/FFmpeg-Endpunkte vor Ort testen |
+
+## v0.6.1-beta.1: Performance, Suche und Bibliotheken
+
+- Kategoriesuche spart nicht benötigte API-Abfragen; Wechsel des Suchfilters entfernt veraltete Resultate, abgebrochene Coroutines werden nicht als Verbindungsfehler fehlklassifiziert.
+- Posterbibliotheken als echtes adaptives LazyVerticalGrid mit stabilen Medien-IDs und eigener Full-Width-Nachladen-Zeile; weniger UI-Neuberechnungen beim Paging.
+- Authentifizierte Cover behalten Cookie-/TLS-Transport, Session-Cache-Trennung und Fallback-Retry, mit gemerkten Coil Requests und nicht animiertem Platzhalter für geringere Rendering-Last.
+- JVM-Test für die Serverbereichs-Auswahl; messbare FPS-/Netzwerk-Werte und echte Geräte-/Serverprüfungen stehen weiter aus.
