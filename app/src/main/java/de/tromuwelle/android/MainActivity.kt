@@ -97,6 +97,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var downloadMessage by remember { mutableStateOf("") }
     var adultFacets by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var selectedRadioGenre by remember { mutableStateOf("") }
+    var selectedRadioCountry by remember { mutableStateOf("") }
+    var radioBitrate by remember { mutableIntStateOf(192) }
+    var radioCodec by remember { mutableStateOf("mp3") }
     var onlyRecent by remember { mutableStateOf(false) }
     var tvOrder by remember { mutableStateOf("source") }
     val recent = remember { mutableStateListOf<String>() }
@@ -247,7 +250,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         browse = MusicBrowse.TRACKS
         folder = ""
         adultTag = ""; mediaSort = "name"; mediaMinHeight = 0
-        selectedRadioGenre = ""; onlyRecent = false
+        selectedRadioGenre = ""; selectedRadioCountry = ""; onlyRecent = false
         entries = emptyList()
         refresh()
     }
@@ -265,7 +268,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             val startSeconds = if (useTranscode) fromSeconds.takeIf { it > 0 } ?: (saved / 1000) else 0L
             playbackStartMs = if (useTranscode) startSeconds * 1000 else 0L
             val queue = if (entry.kind == EntryKind.TRACK) entries.filter { it.kind == EntryKind.TRACK }
-                .map { it.mediaItem(session) } else listOf(entry.mediaItem(session, compatible, quality, startSeconds))
+                .map { it.mediaItem(session) } else listOf(entry.mediaItem(session, compatible, quality, startSeconds, radioBitrate, radioCodec))
             val position = if (entry.kind == EntryKind.TRACK)
                 entries.filter { it.kind == EntryKind.TRACK }.indexOf(entry).coerceAtLeast(0) else 0
             val closeToEnd = entry.duration > 0 && saved >= entry.duration * 1000 - 30_000
@@ -561,10 +564,43 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     }
                 }
             }
+            if (section == LibrarySection.RADIO) {
+                Text("Server-Transcoding", Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(48, 64, 96, 128, 160, 192, 256, 320).forEach { bitrate ->
+                        FilterChip(selected = radioBitrate == bitrate,
+                            onClick = { radioBitrate = bitrate }, label = { Text("$bitrate kbit/s") })
+                    }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("mp3", "aac", "opus").forEach { codec ->
+                        FilterChip(selected = radioCodec == codec, onClick = { radioCodec = codec },
+                            label = { Text(codec.uppercase()) })
+                    }
+                    if (current?.kind == EntryKind.RADIO) {
+                        TextButton(onClick = { current?.let { playItem(it) } }) { Text("Anwenden") }
+                    }
+                }
+            }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (error.isNotBlank()) Text(error, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
             if (section == LibrarySection.RADIO) {
                 val genres = entries.map { it.description }.filter { it.isNotBlank() }.distinct().sorted()
+                val countries = entries.map { it.country }.filter { it.isNotBlank() }.distinct().sorted()
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = selectedRadioCountry.isBlank(), onClick = {
+                        selectedRadioCountry = ""
+                    }, label = { Text("🌍 Alle Länder") })
+                    countries.forEach { code ->
+                        FilterChip(selected = selectedRadioCountry == code, onClick = {
+                            selectedRadioCountry = code
+                        }, label = { Text(radioCountryLabel(code)) })
+                    }
+                }
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(selected = selectedRadioGenre.isBlank(), onClick = {
@@ -594,7 +630,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 .filter { !onlyFavorites || (it.kind.name + ":" + it.id) in favorites }
                 .filter { section != LibrarySection.RADIO ||
                     (selectedRadioGenre.isBlank() || it.description == selectedRadioGenre) &&
-                    (!onlyRecent || it.id in recent) }
+                    (!onlyRecent || it.id in recent) &&
+                    (selectedRadioCountry.isBlank() || it.country == selectedRadioCountry) }
                 .let { list -> when {
                     section == LibrarySection.TV && tvOrder == "name" -> list.sortedBy { it.title.lowercase() }
                     section == LibrarySection.TV && tvOrder == "hd" -> list.sortedByDescending { it.description == "HD" }
@@ -673,4 +710,13 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             }
         }
     }
+}
+
+private fun radioCountryLabel(code: String): String = when (code.uppercase()) {
+    "DE" -> "🇩🇪 Deutschland"
+    "NL" -> "🇳🇱 Niederlande"
+    "AT" -> "🇦🇹 Österreich"
+    "BE" -> "🇧🇪 Belgien"
+    "LU" -> "🇱🇺 Luxemburg"
+    else -> code
 }
