@@ -152,8 +152,9 @@ class TromuwellePlaybackService : MediaLibraryService() {
                 (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
 
         private fun children(parent: String, page: Int, size: Int): List<MediaItem> {
-            require(page >= 0 && size in 1..500) { "Ungültige Seitenangaben." }
-            val offset = page.toLong() * size
+            require(page >= 0) { "Ungültige Seitenangaben." }
+            val limit = size.coerceIn(1, 300)
+            val offset = page.toLong() * limit
             if (offset > 100_000L) return emptyList()
             val main = app.session.restoreVerified()
             val store = SubsonicSourceStore(app)
@@ -190,7 +191,7 @@ class TromuwellePlaybackService : MediaLibraryService() {
                         node("car:external:" + source.id + ":album:" + it.optString("id"),
                             it.optString("name"))
                     }
-                    "albums" -> client.albums(offset = offset.toInt()).take(size).map {
+                    "albums" -> client.albums(offset = offset.toInt()).take(limit).map {
                         node("car:external:" + source.id + ":album:" + it.optString("id"),
                             it.optString("name"))
                     }
@@ -198,7 +199,7 @@ class TromuwellePlaybackService : MediaLibraryService() {
                         carSong("external:" + source.id + ":" + it.optString("id"),
                             it.optString("title"), it.optString("artist"))
                     }
-                    "songs" -> client.songs(offset = offset.toInt()).take(size).map {
+                    "songs" -> client.songs(offset = offset.toInt()).take(limit).map {
                         carSong("external:" + source.id + ":" + it.optString("id"),
                             it.optString("title"), it.optString("artist"))
                     }
@@ -228,7 +229,7 @@ class TromuwellePlaybackService : MediaLibraryService() {
                     node("car:music:tracks", "Titel"),
                     node("car:music:playlists", "Meine Playlists"))
                 parent == "car:music:albums" -> objects(api.json(
-                    "/api/music/albums?offset=" + offset + "&limit=" + size)
+                    "/api/music/albums?offset=" + offset + "&limit=" + limit)
                     .optJSONArray("items")).map {
                     node("car:album:" + it.optString("id"), it.optString("name"))
                 }
@@ -239,7 +240,7 @@ class TromuwellePlaybackService : MediaLibraryService() {
                         it.optString("artist"))
                 }
                 parent == "car:music:tracks" -> objects(api.json(
-                    "/api/music/tracks?offset=" + offset + "&limit=" + size)
+                    "/api/music/tracks?offset=" + offset + "&limit=" + limit)
                     .optJSONArray("items")).map {
                     carSong("music:" + it.optString("id"), it.optString("title"),
                         it.optString("artist"))
