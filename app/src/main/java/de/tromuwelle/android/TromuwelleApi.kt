@@ -13,12 +13,15 @@ class TromuwelleApi(private val session: TromuwelleSession) {
     fun query(value: String) = session.query(value)
 
     fun radioStations() = json("/api/radio/stations").optJSONArray("stations") ?: JSONArray()
-    fun saveRadio(id: String? = null, name: String, url: String, genre: String, logo: String): JSONObject {
+    fun saveRadio(id: String? = null, name: String, url: String, genre: String, logo: String, country: String = ""): JSONObject {
         val body = JSONObject().put("name", name.trim()).put("url", url.trim())
-            .put("genre", genre.trim()).put("logo", logo.trim()).toString()
+            .put("genre", genre.trim()).put("logo", logo.trim()).put("country", country.trim().uppercase()).toString()
         return JSONObject(if (id.isNullOrBlank()) session.post("/api/radio/stations", body)
             else session.put("/api/radio/stations/${query(id)}", body))
     }
+    fun importRadioCatalog(countries: Collection<String>, maximum: Int): JSONObject =
+        jsonPost("/api/radio/catalog/import", JSONObject()
+            .put("countries", countries.toJsonArray()).put("maximum", maximum).toString())
     fun deleteRadio(id: String) = session.delete("/api/radio/stations/${query(id)}")
     fun importRadio(text: String) =
         jsonPost("/api/radio/import", JSONObject().put("content", text).toString())
@@ -47,6 +50,17 @@ class TromuwelleApi(private val session: TromuwelleSession) {
     fun mediaIndex() = json("/api/media/index")
     fun startMediaIndex() = jsonPost("/api/media/index")
     fun stopMediaIndex() = JSONObject(session.delete("/api/media/index"))
+    fun musicQuality() = json("/api/music/quality")
+    fun musicPlaylists() = json("/api/music/playlists").optJSONArray("items") ?: JSONArray()
+    fun musicPlaylist(id: Int) = json("/api/music/playlists/$id")
+    fun createMusicPlaylist(name: String): JSONObject =
+        jsonPost("/api/music/playlists", JSONObject().put("name", name).toString())
+    fun renameMusicPlaylist(id: Int, name: String): JSONObject = JSONObject(
+        session.put("/api/music/playlists/$id", JSONObject().put("name", name).toString()))
+    fun saveMusicPlaylistItems(id: Int, ids: Collection<String>): JSONObject = JSONObject(
+        session.put("/api/music/playlists/$id/items", JSONObject().put("track_ids", ids.toJsonArray()).toString()))
+    fun deleteMusicPlaylist(id: Int) = session.delete("/api/music/playlists/$id")
+    fun musicLyrics(songId: String) = json("/api/music/lyrics/${query(songId)}")
     fun musicStatus() = json("/api/music/status")
     fun startMusicScan() = jsonPost("/api/music/scan")
     fun stopMusicScan() = JSONObject(session.delete("/api/music/scan"))

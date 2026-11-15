@@ -20,15 +20,17 @@ data class LibraryEntry(
     val height: Int = 0,
     val audio: Boolean = false,
     val artwork: String = "",
-    val year: Int = 0
+    val year: Int = 0,
+    val country: String = ""
 ) {
     fun playable() = kind in listOf(EntryKind.TV, EntryKind.RADIO, EntryKind.TRACK, EntryKind.FILE)
     fun isVideo() = kind == EntryKind.TV || (kind == EntryKind.FILE && !audio)
 
-    fun mediaItem(session: TromuwelleSession, transcode: Boolean = false, quality: Int = 1080, start: Long = 0L): MediaItem {
+    fun mediaItem(session: TromuwelleSession, transcode: Boolean = false, quality: Int = 1080, start: Long = 0L,
+                  radioBitrate: Int = 192, radioCodec: String = "mp3"): MediaItem {
         val relative = when (kind) {
             EntryKind.TV -> "/hls/${session.query(id)}/master.m3u8"
-            EntryKind.RADIO -> "/api/radio/stream/${session.query(id)}"
+            EntryKind.RADIO -> "/api/radio/stream/${session.query(id)}?bitrate=$radioBitrate&codec=${session.query(radioCodec)}"
             EntryKind.TRACK -> "/api/music/stream/${session.query(id)}"
             EntryKind.FILE -> "/api/media/file?path=${session.query(path)}" +
                 if (transcode && !audio) "&transcode=true&height=$quality&start=$start" else ""
@@ -36,7 +38,11 @@ data class LibraryEntry(
         }
         val mime = when(kind) {
             EntryKind.TV -> MimeTypes.APPLICATION_M3U8
-            EntryKind.RADIO -> MimeTypes.AUDIO_MPEG
+            EntryKind.RADIO -> when (radioCodec) {
+                "aac" -> MimeTypes.AUDIO_AAC
+                "opus" -> MimeTypes.AUDIO_OGG
+                else -> MimeTypes.AUDIO_MPEG
+            }
             EntryKind.TRACK -> when (path.substringAfterLast('.', "").lowercase()) {
                 "flac" -> MimeTypes.AUDIO_FLAC
                 "m4a", "aac" -> MimeTypes.AUDIO_MP4
@@ -86,7 +92,8 @@ class TromuwelleCatalog(private val session: TromuwelleSession) {
                 val arr = JSONObject(session.get("/api/radio/stations")).optJSONArray("stations") ?: JSONArray()
                 val all = arr.entries { obj ->
                     LibraryEntry(obj.optString("id"), obj.optString("name"), obj.optString("genre"), EntryKind.RADIO,
-                        artwork = obj.optString("logo").takeIf { it.startsWith("https://") } ?: "")
+                        artwork = obj.optString("logo").takeIf { it.startsWith("https://") } ?: "",
+                        country = obj.optString("country"))
                 }
                 LibraryPage(all.filter { it.title.contains(search, ignoreCase = true) || it.description.contains(search, ignoreCase = true) }, all.size)
             }
