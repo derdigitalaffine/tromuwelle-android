@@ -80,6 +80,9 @@ fun StreamScaffold(
     onClosePlayer: () -> Unit,
     content: @Composable (PaddingValues) -> Unit
 ) {
+    // Larger Android tablets use a left rail, leaving the whole vertical
+    // viewport for the actual media. Compact phones retain thumb navigation.
+    val expandedNavigation = LocalConfiguration.current.screenWidthDp >= 720
     var playbackProgress by remember(player) { mutableFloatStateOf(0f) }
     LaunchedEffect(player) {
         while (isActive) {
@@ -178,20 +181,50 @@ fun StreamScaffold(
                         }
                     }
                 }
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 4.dp) {
-                    StreamTab.entries.forEach { destination ->
-                        NavigationBarItem(
-                            selected = tab == destination,
-                            onClick = { onTab(destination) },
-                            icon = { Icon(destination.icon, contentDescription = null) },
-                            label = { Text(destination.title, maxLines = 1) },
-                            alwaysShowLabel = true
-                        )
+                if (!expandedNavigation) {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 4.dp) {
+                        StreamTab.entries.forEach { destination ->
+                            NavigationBarItem(
+                                selected = tab == destination,
+                                onClick = { onTab(destination) },
+                                icon = { Icon(destination.icon, contentDescription = null) },
+                                label = { Text(destination.title, maxLines = 1) },
+                                alwaysShowLabel = true
+                            )
+                        }
                     }
                 }
             }
-        }, content = content)
+        }, content = { innerPadding ->
+            if (expandedNavigation) {
+                Row(Modifier.fillMaxSize().padding(innerPadding)) {
+                    NavigationRail(containerColor = MaterialTheme.colorScheme.surface,
+                        header = {
+                            Box(Modifier.padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Waves,
+                                    contentDescription = "Tromuwelle",
+                                    tint = Accent, modifier = Modifier.size(30.dp))
+                            }
+                        }) {
+                        StreamTab.entries.forEach { destination ->
+                            NavigationRailItem(
+                                selected = tab == destination,
+                                onClick = { onTab(destination) },
+                                icon = { Icon(destination.icon, contentDescription = null) },
+                                label = { Text(destination.title, maxLines = 1) },
+                                alwaysShowLabel = true
+                            )
+                        }
+                    }
+                    VerticalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                    Box(Modifier.weight(1f).fillMaxHeight()) { content(PaddingValues(0.dp)) }
+                }
+            } else {
+                content(innerPadding)
+            }
+        })
 }
 
 @Composable
