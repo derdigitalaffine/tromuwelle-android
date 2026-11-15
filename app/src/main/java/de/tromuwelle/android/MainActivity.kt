@@ -33,6 +33,9 @@ import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerView
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import org.json.JSONObject
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -87,6 +90,11 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var adultTag by remember { mutableStateOf("") }
     var mediaSort by remember { mutableStateOf("name") }
     var mediaMinHeight by remember { mutableIntStateOf(0) }
+    var adultFacets by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var selectedRadioGenre by remember { mutableStateOf("") }
+    var onlyRecent by remember { mutableStateOf(false) }
+    var tvOrder by remember { mutableStateOf("source") }
+    val recent = remember { mutableStateListOf<String>() }
     var connecting by remember { mutableStateOf(false) }
     var section by remember { mutableStateOf(LibrarySection.TV) }
     var browse by remember { mutableStateOf(MusicBrowse.TRACKS) }
@@ -108,6 +116,35 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var quality by remember { mutableIntStateOf(1080) }
     var onlyFavorites by remember { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(connected, session.server, session.username) {
+        favorites.clear(); recent.clear()
+        if (connected) {
+            val prefix = session.server + ":" + session.username
+            favorites.addAll(prefs.getStringSet("items:" + prefix, emptySet()).orEmpty())
+            recent.addAll(prefs.getString("radioRecent:" + prefix, "").orEmpty()
+                .split("|").filter { it.isNotBlank() })
+        }
+    }
+    LaunchedEffect(player) {
+        while (isActive) {
+            delay(5000)
+            val item = player?.currentMediaItem
+            if (connected && item != null && item.mediaId.isNotBlank() &&
+                !item.mediaId.startsWith("TV:") && !item.mediaId.startsWith("RADIO:")) {
+                val pos = player.currentPosition
+                if (pos > 1000) prefs.edit().putLong("resume:" + session.server + ":" +
+                    session.username + ":" + item.mediaId, pos).apply()
+            }
+        }
+    }
+    LaunchedEffect(connected, section) {
+        if (connected && section == LibrarySection.PRIVATE) {
+            adultFacets = try {
+                withContext(Dispatchers.IO) { TromuwelleApi(session).adultFacets().objects() }
+            } catch (_: Exception) { emptyList() }
+        }
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -167,6 +204,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         browse = MusicBrowse.TRACKS
         folder = ""
         adultTag = ""; mediaSort = "name"; mediaMinHeight = 0
+        selectedRadioGenre = ""; onlyRecent = false
         entries = emptyList()
         refresh()
     }
@@ -181,10 +219,19 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 .map { it.mediaItem(session) } else listOf(entry.mediaItem(session, compatible, quality))
             val position = if (entry.kind == EntryKind.TRACK)
                 entries.filter { it.kind == EntryKind.TRACK }.indexOf(entry).coerceAtLeast(0) else 0
-            controller.setMediaItems(queue, position, 0L)
+            val resume = if (entry.kind == EntryKind.TRACK || entry.kind == EntryKind.FILE)
+                prefs.getLong("resume:" + session.server + ":" + session.username + ":" +
+                    entry.kind.name + ":" + entry.id, 0L) else 0L
+            controller.setMediaItems(queue, position, resume.coerceAtLeast(0L))
             controller.prepare()
             controller.play()
             current = entry
+            if (entry.kind == EntryKind.RADIO) {
+                recent.remove(entry.id); recent.add(0, entry.id)
+                while (recent.size > 15) recent.removeAt(recent.lastIndex)
+                prefs.edit().putString("radioRecent:" + session.server + ":" +
+                    session.username, recent.joinToString("|")).apply()
+            }
             playbackError = ""
         } catch (exception: Exception) {
             playbackError = exception.message ?: "Wiedergabe konnte nicht gestartet werden."
@@ -194,7 +241,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     fun toggleFavorite(entry: LibraryEntry) {
         val key = entry.kind.name + ":" + entry.id
         if (key in favorites) favorites.remove(key) else favorites.add(key)
-        prefs.edit().putStringSet("items", favorites.toSet()).apply()
+        prefs.edit().putStringSet("items:" + session.server + ":" + session.username,
+            favorites.toSet()).apply()
     }
 
     if (connected && accountPage) {
@@ -347,6 +395,17 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 }
                 Text("Private 18+-Filme · nur freigegebene Quellen",
                     style = MaterialTheme.typography.titleMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = adultTag.isBlank(), onClick = { adultTag = ""; refresh() },
+                        label = { Text("Alle Tags") })
+                    adultFacets.forEach { facet ->
+                        val tag = facet.optString("tag")
+                        FilterChip(selected = adultTag == tag, onClick = {
+                            adultTag = tag; refresh()
+                        }, label = { Text(tag + " (" + facet.optInt("count") + ")") })
+                    }
+                }
             }
             if (section == LibrarySection.MEDIA && folder.isNotBlank() && search.isBlank()) {
                 TextButton(onClick = { folder = folder.substringBeforeLast('/', ""); refresh() }) {
@@ -366,7 +425,25 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = { refresh() }) { Text("Aktualisieren") }
             }
-            if (section == LibrarySection.MEDIA) {
+            if (section == LibrarySection.MEDIA || section == LibrarySection.PRIVATE) {
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("name", "newest", "quality", "longest").forEach { option ->
+                        FilterChip(selected = mediaSort == option, onClick = {
+                            mediaSort = option; refresh()
+                        }, label = { Text(when(option) {
+                            "name" -> "Name"; "newest" -> "Neu"; "quality" -> "Qualität"; else -> "Dauer"
+                        }) })
+                    }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0, 720, 1080, 2160).forEach { h ->
+                        FilterChip(selected = mediaMinHeight == h, onClick = {
+                            mediaMinHeight = h; refresh()
+                        }, label = { Text(if (h == 0) "Alle" else h.toString() + "p+") })
+                    }
+                }
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !compatible, onClick = { compatible = false },
@@ -381,7 +458,44 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (error.isNotBlank()) Text(error, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
-            val shown = if (onlyFavorites) entries.filter { (it.kind.name + ":" + it.id) in favorites } else entries
+            if (section == LibrarySection.RADIO) {
+                val genres = entries.map { it.description }.filter { it.isNotBlank() }.distinct().sorted()
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = selectedRadioGenre.isBlank(), onClick = {
+                        selectedRadioGenre = ""
+                    }, label = { Text("Alle Genres") })
+                    genres.forEach { genre ->
+                        FilterChip(selected = selectedRadioGenre == genre, onClick = {
+                            selectedRadioGenre = genre
+                        }, label = { Text(genre) })
+                    }
+                    FilterChip(selected = onlyRecent, onClick = { onlyRecent = !onlyRecent },
+                        label = { Text("Zuletzt gehört") })
+                }
+            }
+            if (section == LibrarySection.TV) {
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("source", "name", "hd").forEach { order ->
+                        FilterChip(selected = tvOrder == order, onClick = { tvOrder = order },
+                            label = { Text(when (order) {
+                                "name" -> "A–Z"; "hd" -> "HD zuerst"; else -> "Quellreihenfolge"
+                            }) })
+                    }
+                }
+            }
+            val shown = entries
+                .filter { !onlyFavorites || (it.kind.name + ":" + it.id) in favorites }
+                .filter { section != LibrarySection.RADIO ||
+                    (selectedRadioGenre.isBlank() || it.description == selectedRadioGenre) &&
+                    (!onlyRecent || it.id in recent) }
+                .let { list -> when {
+                    section == LibrarySection.TV && tvOrder == "name" -> list.sortedBy { it.title.lowercase() }
+                    section == LibrarySection.TV && tvOrder == "hd" -> list.sortedByDescending { it.description == "HD" }
+                    section == LibrarySection.RADIO && onlyRecent -> list.sortedBy { recent.indexOf(it.id) }
+                    else -> list
+                } }
             if (shown.isEmpty() && !loading && error.isBlank()) {
                 Text("Keine Einträge gefunden.", Modifier.padding(20.dp))
             }
