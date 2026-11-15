@@ -2,6 +2,8 @@ package de.tromuwelle.android
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -668,9 +670,17 @@ fun StreamVideoDetails(session: TromuwelleSession, entry: LibraryEntry,
                        onDismiss: () -> Unit, onPlay: () -> Unit,
                        onInfo: () -> Unit, onDownload: () -> Unit,
                        onFavorite: () -> Unit, onCast: () -> Unit, favorite: Boolean) {
+    val context = LocalContext.current
+    val resumeMs = remember(entry.id, session.server, session.username) {
+        context.getSharedPreferences("favorites", 0).getLong(
+            "resume:" + session.server + ":" + session.username + ":FILE:" + entry.id, 0L)
+    }
+    val canResume = resumeMs >= 30_000 &&
+        (entry.duration <= 0 || resumeMs < entry.duration * 1000L - 20_000)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 30.dp),
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 30.dp),
             verticalArrangement = Arrangement.spacedBy(13.dp)) {
             AuthenticatedArtwork(session, entry,
                 Modifier.fillMaxWidth().height(206.dp).clip(RoundedCornerShape(18.dp)))
@@ -682,10 +692,21 @@ fun StreamVideoDetails(session: TromuwelleSession, entry: LibraryEntry,
                 entry.duration.takeIf { it > 0 }?.let { "${it / 60} min" }
             ).joinToString(" · ").ifBlank { "Deine Mediathek" },
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (canResume && entry.duration > 0) {
+                LinearProgressIndicator(
+                    progress = { (resumeMs.toFloat() / (entry.duration * 1000f))
+                        .coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(5.dp),
+                    color = MaterialTheme.colorScheme.primary)
+                Text("Zuletzt bei " + (resumeMs / 60_000L) + " Min. gestoppt",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Button(onClick = onPlay, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+                Icon(if (canResume) Icons.Rounded.PlayCircle else Icons.Rounded.PlayArrow,
+                    contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Jetzt abspielen")
+                Text(if (canResume) "Film fortsetzen" else "Jetzt abspielen")
             }
             OutlinedButton(onClick = onCast, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.Cast, contentDescription = null)
