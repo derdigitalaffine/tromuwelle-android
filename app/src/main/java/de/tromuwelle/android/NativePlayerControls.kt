@@ -1,11 +1,14 @@
 package de.tromuwelle.android
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -21,66 +24,128 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
                          onFullscreen: () -> Unit = {}, onPip: () -> Unit = {}) {
     var duration by remember(player) { mutableLongStateOf(0L) }
     var position by remember(player) { mutableLongStateOf(0L) }
+    var draggingPosition by remember(player) { mutableStateOf(false) }
+    var isPlaying by remember(player) { mutableStateOf(player.isPlaying) }
     var volume by remember(player) { mutableFloatStateOf(player.volume) }
     var selectedQuality by remember { mutableIntStateOf(0) }
     var trackVersion by remember { mutableIntStateOf(0) }
     var trackDialog by remember { mutableStateOf(false) }
-    var speed by remember { mutableFloatStateOf(1f) }
+    var speed by remember(player) { mutableFloatStateOf(player.playbackParameters.speed) }
     var repeat by remember { mutableIntStateOf(player.repeatMode) }
     var shuffle by remember { mutableStateOf(player.shuffleModeEnabled) }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) { trackVersion++ }
+            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onMediaItemTransition(
+                mediaItem: androidx.media3.common.MediaItem?, reason: Int
+            ) {
+                draggingPosition = false
+                position = player.currentPosition.coerceAtLeast(0L)
+                duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
+            }
+            override fun onRepeatModeChanged(mode: Int) { repeat = mode }
+            override fun onShuffleModeEnabledChanged(enabled: Boolean) { shuffle = enabled }
+            override fun onPlaybackParametersChanged(
+                parameters: androidx.media3.common.PlaybackParameters
+            ) { speed = parameters.speed }
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
     }
     LaunchedEffect(player) {
         while (isActive) {
-            position = player.currentPosition.coerceAtLeast(0L)
+            if (!draggingPosition) position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
-            repeat = player.repeatMode
-            shuffle = player.shuffleModeEnabled
-            delay(650)
+            // Paused playback needs much fewer Compose invalidations; the
+            // Media3 listener handles immediate play/pause/queue changes.
+            delay(if (isPlaying) 650L else 1500L)
         }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         if (duration > 0 && !isLive && canSeek) {
-            Slider(value = position.toFloat().coerceIn(0f, duration.toFloat()),
-                onValueChange = { position = it.toLong() },
-                onValueChangeFinished = { player.seekTo(position) },
-                valueRange = 0f..duration.toFloat())
+            Slider(
+                value = position.toFloat().coerceIn(0f, duration.toFloat()),
+                onValueChange = {
+                    draggingPosition = true
+                    position = it.toLong()
+                },
+                onValueChangeFinished = {
+                    player.seekTo(position)
+                    draggingPosition = false
+                },
+                valueRange = 0f..duration.toFloat()
+            )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(formatMediaTime(position), style = MaterialTheme.typography.labelSmall)
                 Text(formatMediaTime(duration), style = MaterialTheme.typography.labelSmall)
             }
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (player.mediaItemCount > 1) {
-                TextButton(onClick = { player.seekToPreviousMediaItem() }) { Text("⏮") }
+        Row(Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically) {
+            if (!isLive && canSeek && duration > 0) {
+                IconButton(onClick = {
+                    player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L))
+                }) {
+                    Icon(Icons.Rounded.Replay10, contentDescription = "10 Sekunden zurück")
+                }
+            } else if (player.mediaItemCount > 1) {
+                IconButton(onClick = { player.seekToPreviousMediaItem() }) {
+                    Icon(Icons.Rounded.SkipPrevious, contentDescription = "Vorheriger Titel")
+                }
             }
-            Button(onClick = { if(player.isPlaying) player.pause() else player.play() }) {
-                Text(if (player.isPlaying) "Pause" else "Wiedergabe")
+            if (player.mediaItemCount > 1 && !isLive && canSeek && duration > 0) {
+                IconButton(onClick = { player.seekToPreviousMediaItem() }) {
+                    Icon(Icons.Rounded.SkipPrevious, contentDescription = "Vorheriger Titel")
+                }
             }
-            if (player.mediaItemCount > 1) {
-                TextButton(onClick = { player.seekToNextMediaItem() }) { Text("⏭") }
+            FilledIconButton(
+                onClick = { if (isPlaying) player.pause() else player.play() },
+                modifier = Modifier.size(58.dp)
+            ) {
+                Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (isPlaying) "Pausieren" else "Wiedergeben",
+                    modifier = Modifier.size(32.dp))
+            }
+            if (player.mediaItemCount > 1 && !isLive && canSeek && duration > 0) {
+                IconButton(onClick = { player.seekToNextMediaItem() }) {
+                    Icon(Icons.Rounded.SkipNext, contentDescription = "Nächster Titel")
+                }
+            }
+            if (!isLive && canSeek && duration > 0) {
+                IconButton(onClick = {
+                    player.seekTo((player.currentPosition + 10_000L).coerceAtMost(duration))
+                }) {
+                    Icon(Icons.Rounded.Forward10, contentDescription = "10 Sekunden vor")
+                }
+            } else if (player.mediaItemCount > 1) {
+                IconButton(onClick = { player.seekToNextMediaItem() }) {
+                    Icon(Icons.Rounded.SkipNext, contentDescription = "Nächster Titel")
+                }
             }
             if (isLive) {
-                OutlinedButton(onClick = { player.seekToDefaultPosition() }) { Text("● Live") }
-            } else if (duration > 0 && canSeek) {
-                OutlinedButton(onClick = { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)) }) {
-                    Text("−10 s")
-                }
-                OutlinedButton(onClick = { player.seekTo((player.currentPosition + 10_000L).coerceAtMost(duration)) }) {
-                    Text("+10 s")
-                }
+                TextButton(onClick = { player.seekToDefaultPosition() }) { Text("● Live") }
             }
-            if (!isAudio) {
-                TextButton(onClick = onFullscreen) { Text("Vollbild") }
-                TextButton(onClick = onPip) { Text("PiP") }
+        }
+        if (!isAudio) {
+            Row(Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onFullscreen) {
+                    Icon(Icons.Rounded.Fullscreen, contentDescription = null,
+                        modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Vollbild")
+                }
+                OutlinedButton(onClick = onPip) {
+                    Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = null,
+                        modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Bild-in-Bild")
+                }
             }
         }
 
@@ -187,7 +252,7 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
     }
 }
 
-private fun formatMediaTime(ms: Long): String {
+internal fun formatMediaTime(ms: Long): String {
     val seconds = (ms / 1000L).coerceAtLeast(0L)
     return if (seconds >= 3600L) "%d:%02d:%02d".format(seconds / 3600L, (seconds / 60L) % 60L, seconds % 60L)
     else "%d:%02d".format(seconds / 60L, seconds % 60L)
