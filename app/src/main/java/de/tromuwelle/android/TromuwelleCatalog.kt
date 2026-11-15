@@ -6,7 +6,7 @@ import androidx.media3.common.MimeTypes
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class LibrarySection(val label: String) { TV("Fernsehen"), RADIO("Radio"), MUSIC("Musik"), MEDIA("Mediathek") }
+enum class LibrarySection(val label: String) { TV("Fernsehen"), RADIO("Radio"), MUSIC("Musik"), MEDIA("Mediathek"), PRIVATE("18+ Filme") }
 enum class MusicBrowse(val label: String) { TRACKS("Titel"), ARTISTS("Interpreten"), ALBUMS("Alben") }
 enum class EntryKind { TV, RADIO, TRACK, ARTIST, ALBUM, FOLDER, FILE }
 
@@ -18,18 +18,20 @@ data class LibraryEntry(
     val path: String = "",
     val duration: Long = 0L,
     val height: Int = 0,
-    val audio: Boolean = false
+    val audio: Boolean = false,
+    val artwork: String = "",
+    val year: Int = 0
 ) {
     fun playable() = kind in listOf(EntryKind.TV, EntryKind.RADIO, EntryKind.TRACK, EntryKind.FILE)
     fun isVideo() = kind == EntryKind.TV || (kind == EntryKind.FILE && !audio)
 
-    fun mediaItem(session: TromuwelleSession, transcode: Boolean = false, quality: Int = 1080): MediaItem {
+    fun mediaItem(session: TromuwelleSession, transcode: Boolean = false, quality: Int = 1080, start: Long = 0L): MediaItem {
         val relative = when (kind) {
             EntryKind.TV -> "/hls/${session.query(id)}/master.m3u8"
             EntryKind.RADIO -> "/api/radio/stream/${session.query(id)}"
             EntryKind.TRACK -> "/api/music/stream/${session.query(id)}"
             EntryKind.FILE -> "/api/media/file?path=${session.query(path)}" +
-                if (transcode && !audio) "&transcode=true&height=$quality" else ""
+                if (transcode && !audio) "&transcode=true&height=$quality&start=$start" else ""
             else -> error("Dieses Element kann nicht abgespielt werden.")
         }
         val mime = when(kind) {
@@ -70,7 +72,8 @@ data class LibraryPage(val items: List<LibraryEntry>, val total: Int, val path: 
 class TromuwelleCatalog(private val session: TromuwelleSession) {
     fun load(section: LibrarySection, search: String = "", folder: String = "",
              browse: MusicBrowse = MusicBrowse.TRACKS, artist: String = "",
-             album: String = "", offset: Int = 0): LibraryPage {
+             album: String = "", offset: Int = 0,
+             adultTag: String = "", sort: String = "name", minHeight: Int = 0): LibraryPage {
         return when (section) {
             LibrarySection.TV -> {
                 val arr = JSONArray(session.get("/api/channels"))
@@ -82,7 +85,8 @@ class TromuwelleCatalog(private val session: TromuwelleSession) {
             LibrarySection.RADIO -> {
                 val arr = JSONObject(session.get("/api/radio/stations")).optJSONArray("stations") ?: JSONArray()
                 val all = arr.entries { obj ->
-                    LibraryEntry(obj.optString("id"), obj.optString("name"), obj.optString("genre"), EntryKind.RADIO)
+                    LibraryEntry(obj.optString("id"), obj.optString("name"), obj.optString("genre"), EntryKind.RADIO,
+                        artwork = obj.optString("logo").takeIf { it.startsWith("https://") } ?: "")
                 }
                 LibraryPage(all.filter { it.title.contains(search, ignoreCase = true) || it.description.contains(search, ignoreCase = true) }, all.size)
             }
@@ -101,30 +105,39 @@ class TromuwelleCatalog(private val session: TromuwelleSession) {
                     when(browse) {
                         MusicBrowse.TRACKS -> LibraryEntry(entry.optString("id"), entry.optString("title"),
                             listOf(entry.optString("artist"), entry.optString("album")).filter { it.isNotBlank() }.joinToString(" · "),
-                            EntryKind.TRACK, entry.optString("path"), entry.optLong("duration"))
+                            EntryKind.TRACK, entry.optString("path"), entry.optLong("duration"),
+                            artwork = "/api/music/cover/" + session.query(entry.optString("id")), year = entry.optInt("year"))
                         MusicBrowse.ARTISTS -> LibraryEntry(entry.optString("id"), entry.optString("name"),
-                            "${entry.optInt("albums")} Alben · ${entry.optInt("tracks")} Titel", EntryKind.ARTIST)
+                            "${entry.optInt("albums")} Alben · ${entry.optInt("tracks")} Titel", EntryKind.ARTIST,
+                            artwork = entry.optString("cover_song_id").takeIf { it.isNotBlank() }?.let { "/api/music/cover/" + session.query(it) } ?: "")
                         MusicBrowse.ALBUMS -> LibraryEntry(entry.optString("id"), entry.optString("name"),
-                            entry.optString("artist") + " · ${entry.optInt("tracks")} Titel", EntryKind.ALBUM)
+                            entry.optString("artist") + " · ${entry.optInt("tracks")} Titel", EntryKind.ALBUM,
+                            artwork = entry.optString("cover_song_id").takeIf { it.isNotBlank() }?.let { "/api/music/cover/" + session.query(it) } ?: "", year = entry.optInt("year"))
                     }
                 }, obj.optInt("total", arr.length()))
             }
-            LibrarySection.MEDIA -> {
-                val path = if(search.isNotBlank())
-                    "/api/media/search?q=${session.query(search)}&limit=100&offset=$offset"
+            LibrarySection.MEDIA, LibrarySection.PRIVATE -> {
+                val path = if (section == LibrarySection.PRIVATE)
+                    "/api/media/search?category=adult&q=${session.query(search)}&tag=${session.query(adultTag)}&sort=${session.query(sort)}&min_height=$minHeight&limit=100&offset=$offset"
+                else if(search.isNotBlank() || minHeight > 0 || sort != "name")
+                    "/api/media/search?category=normal&q=${session.query(search)}&sort=${session.query(sort)}&min_height=$minHeight&limit=100&offset=$offset"
                 else "/api/media/list?path=${session.query(folder)}"
                 val obj = JSONObject(session.get(path))
                 val arr = obj.optJSONArray("items") ?: JSONArray()
                 LibraryPage(arr.entries { entry ->
                     val isFolder = entry.optBoolean("directory", false)
                     val mediaPath = entry.optString("path")
-                    LibraryEntry(mediaPath, entry.optString("name"), when {
+                    LibraryEntry(mediaPath, if (section == LibrarySection.PRIVATE) entry.optString("title").ifBlank { entry.optString("name") } else entry.optString("name"), when {
                         isFolder -> "Ordner"
                         entry.optInt("height") > 0 -> "${entry.optInt("height")}p"
                         entry.optBoolean("audio") -> "Audio"
                         else -> "Video"
                     }, if(isFolder) EntryKind.FOLDER else EntryKind.FILE, mediaPath,
-                        entry.optLong("duration"), entry.optInt("height"), entry.optBoolean("audio"))
+                        entry.optLong("duration"), entry.optInt("height"), entry.optBoolean("audio"),
+                    artwork = if (isFolder) "" else if (section == LibrarySection.PRIVATE)
+                        "/api/media/artwork?kind=poster&path=" + session.query(mediaPath)
+                    else "/api/media/thumbnail?path=" + session.query(mediaPath),
+                    year = entry.optInt("year"))
                 }, obj.optInt("total", arr.length()), obj.optString("path", folder))
             }
         }
