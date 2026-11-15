@@ -79,7 +79,9 @@ class TromuwelleCatalog(private val session: TromuwelleSession) {
     fun load(section: LibrarySection, search: String = "", folder: String = "",
              browse: MusicBrowse = MusicBrowse.TRACKS, artist: String = "",
              album: String = "", offset: Int = 0,
-             adultTag: String = "", sort: String = "name", minHeight: Int = 0): LibraryPage {
+             adultTag: String = "", sort: String = "name", minHeight: Int = 0,
+             musicSort: String = "album", minBitrate: Int = 0,
+             onlyLossless: Boolean = false): LibraryPage {
         return when (section) {
             LibrarySection.TV -> {
                 val arr = JSONArray(session.get("/api/channels"))
@@ -104,6 +106,9 @@ class TromuwelleCatalog(private val session: TromuwelleSession) {
                     MusicBrowse.ALBUMS -> "/api/music/albums"
                 }
                 val query = "?limit=100&offset=$offset&q=${session.query(search)}" +
+                    (if (browse == MusicBrowse.TRACKS)
+                        "&sort=${session.query(musicSort)}&min_bitrate=$minBitrate&lossless=$onlyLossless"
+                     else "") +
                     (if(artist.isNotBlank() && browse != MusicBrowse.ARTISTS) "&artist_id=${session.query(artist)}" else "") +
                     (if(album.isNotBlank() && browse == MusicBrowse.TRACKS) "&album_id=${session.query(album)}" else "")
                 val obj = JSONObject(session.get(endpoint + query))
@@ -111,7 +116,11 @@ class TromuwelleCatalog(private val session: TromuwelleSession) {
                 LibraryPage(arr.entries { entry ->
                     when(browse) {
                         MusicBrowse.TRACKS -> LibraryEntry(entry.optString("id"), entry.optString("title"),
-                            listOf(entry.optString("artist"), entry.optString("album")).filter { it.isNotBlank() }.joinToString(" · "),
+                            listOf(entry.optString("artist"), entry.optString("album"),
+                                entry.optString("codec").uppercase() +
+                                    (if (entry.optInt("bitrate") > 0) " · ${entry.optInt("bitrate") / 1000} kbps" else "") +
+                                    (if (entry.optBoolean("lossless")) " · Lossless" else ""))
+                                .filter { it.isNotBlank() }.joinToString(" · "),
                             EntryKind.TRACK, entry.optString("path"), entry.optLong("duration"),
                             artwork = "/api/music/cover/" + session.query(entry.optString("id")), year = entry.optInt("year"))
                         MusicBrowse.ARTISTS -> LibraryEntry(entry.optString("id"), entry.optString("name"),
