@@ -84,6 +84,9 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
     var radioUrl by remember { mutableStateOf("") }
     var radioGenre by remember { mutableStateOf("") }
     var radioLogo by remember { mutableStateOf("") }
+    var radioCountry by remember { mutableStateOf("") }
+    var importCountries by remember { mutableStateOf(setOf("DE", "NL")) }
+    var importMaximum by remember { mutableFloatStateOf(500f) }
     var buffer by remember { mutableFloatStateOf(36f) }
     var maxHeight by remember { mutableIntStateOf(0) }
     var mediaPath by remember { mutableStateOf("") }
@@ -250,6 +253,13 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                             label = { Text("Stream-URL (HTTP/HTTPS)") }, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(radioGenre, { radioGenre = it },
                             label = { Text("Genre") }, modifier = Modifier.fillMaxWidth())
+                        Row(Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("", "DE", "NL", "AT", "BE", "LU").forEach { code ->
+                                FilterChip(selected = radioCountry == code, onClick = { radioCountry = code },
+                                    label = { Text(if (code.isBlank()) "Unbekannt" else code) })
+                            }
+                        }
                         OutlinedTextField(radioLogo, { radioLogo = it },
                             label = { Text("Logo-URL (optional)") }, modifier = Modifier.fillMaxWidth())
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -260,15 +270,40 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                                     val url = radioUrl
                                     val genre = radioGenre
                                     val logo = radioLogo
+                                    val country = radioCountry
                                     act("Radiosender gespeichert.", {
-                                        api.saveRadio(selected, name, url, genre, logo)
+                                        api.saveRadio(selected, name, url, genre, logo, country)
                                     }, sources = true)
-                                    radioId = ""; radioName = ""; radioUrl = ""; radioGenre = ""; radioLogo = ""
+                                    radioId = ""; radioName = ""; radioUrl = ""; radioGenre = ""; radioLogo = ""; radioCountry = ""
                                 }) { Text(if (radioId.isBlank()) "Hinzufügen" else "Speichern") }
                             OutlinedButton(onClick = { radioPicker.launch(arrayOf("*/*")) }) {
                                 Text("M3U/PLS importieren")
                             }
                         }
+                        HorizontalDivider()
+                        Text("Sender aus Online-Katalog automatisch importieren",
+                            style = MaterialTheme.typography.titleMedium)
+                        Text("Es werden nur neue Sender ergänzt. Der Server prüft Streamadressen.",
+                            style = MaterialTheme.typography.bodySmall)
+                        Row(Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("DE", "NL", "AT", "BE", "LU").forEach { code ->
+                                FilterChip(selected = code in importCountries, onClick = {
+                                    importCountries = if (code in importCountries) importCountries - code
+                                        else importCountries + code
+                                }, label = { Text(code) })
+                            }
+                        }
+                        Text("Maximal " + importMaximum.toInt() + " Sender je Land")
+                        Slider(value = importMaximum, onValueChange = { importMaximum = it },
+                            valueRange = 100f..1800f, steps = 16)
+                        OutlinedButton(enabled = !busy && importCountries.isNotEmpty(), onClick = {
+                            val chosen = importCountries.sorted()
+                            val maximum = importMaximum.toInt()
+                            act("Katalogimport abgeschlossen.", {
+                                api.importRadioCatalog(chosen, maximum)
+                            }, sources = true)
+                        }) { Text("Länderkatalog importieren") }
                     }
                     items(radios, key = { it.optString("id") }) { item ->
                         val id = item.optString("id")
@@ -278,7 +313,7 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                             TextButton(onClick = {
                                 radioId = id; radioName = item.optString("name")
                                 radioUrl = item.optString("url"); radioGenre = item.optString("genre")
-                                radioLogo = item.optString("logo")
+                                radioLogo = item.optString("logo"); radioCountry = item.optString("country")
                             }) { Text("Bearbeiten") }
                             TextButton(onClick = {
                                 confirm = ("Radiosender „" + item.optString("name") + "“ löschen?") to {
