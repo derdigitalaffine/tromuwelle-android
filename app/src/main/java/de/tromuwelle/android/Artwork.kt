@@ -5,18 +5,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
- import coil.compose.AsyncImage
+import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import kotlinx.coroutines.delay
@@ -69,13 +67,13 @@ fun AuthenticatedArtwork(session: TromuwelleSession, entry: LibraryEntry,
                          modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val loader = session.artworkLoader
-    val candidates = remember(entry.id, entry.path, entry.artwork, entry.kind) {
+    val cacheTag = session.artworkCacheTag
+    val candidates = remember(session.server, entry.id, entry.path, entry.artwork, entry.kind) {
         artworkCandidates(entry, session::query)
     }
-    var candidate by remember(candidates) { mutableIntStateOf(0) }
-    var retries by remember(candidates, candidate) { mutableIntStateOf(0) }
-    var failureSignal by remember(candidates, candidate) { mutableIntStateOf(0) }
-    var loading by remember(candidates, candidate) { mutableStateOf(true) }
+    var candidate by remember(candidates, cacheTag) { mutableIntStateOf(0) }
+    var retries by remember(candidates, candidate, cacheTag) { mutableIntStateOf(0) }
+    var failureSignal by remember(candidates, candidate, cacheTag) { mutableIntStateOf(0) }
 
     if (candidate >= candidates.size) {
         ArtworkPlaceholder(entry, modifier)
@@ -103,32 +101,29 @@ fun AuthenticatedArtwork(session: TromuwelleSession, entry: LibraryEntry,
             failureSignal = 0
         }
     }
+    // Share the decoded image and request object across recompositions. A
+    // continuous animated spinner on every off-network poster caused avoidable
+    // CPU/GPU work in long grids; a static themed placeholder is much cheaper.
+    val request = remember(context, url, cacheTag, retries) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .crossfade(120)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCacheKey(cacheTag + ":" + url + ":" + retries)
+            .diskCacheKey(cacheTag + ":" + url)
+            .setParameter("attempt", retries, memoryCacheKey = null)
+            .build()
+    }
     Box(modifier) {
+        ArtworkPlaceholder(entry, Modifier.fillMaxSize())
         AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(url)
-                .crossfade(160)
-                // The server's thumb cache itself is versioned by mtime/size.
-                .memoryCachePolicy(CachePolicy.ENABLED)
-                .diskCachePolicy(CachePolicy.ENABLED)
-                .memoryCacheKey(session.artworkCacheTag + ":" + url + ":" + retries)
-                .diskCacheKey(session.artworkCacheTag + ":" + url)
-                .setParameter("attempt", retries, memoryCacheKey = null)
-                .build(),
+            model = request,
             imageLoader = loader,
             contentScale = ContentScale.Crop,
             contentDescription = entry.title,
             modifier = Modifier.fillMaxSize(),
-            onLoading = { loading = true },
-            onSuccess = { loading = false },
-            onError = {
-                loading = false
-                failureSignal++
-            }
+            onError = { failureSignal++ }
         )
-        if (loading) CircularProgressIndicator(
-            modifier = Modifier.align(Alignment.Center),
-            color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
-        if (candidate >= candidates.size) ArtworkPlaceholder(entry, Modifier.fillMaxSize())
     }
 }

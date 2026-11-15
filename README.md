@@ -4,6 +4,13 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 
 **Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (laufender API-Abgleich mit dem aktuellen privaten Tromuwelle-Server).
 
+## v0.6.1-beta.1 – flüssigere Bibliotheken und gezielte Suche
+
+- **Schnellere Suche auf schwachen oder entfernten Servern:** Die Kategorie-Filter begrenzen die tatsächlich ausgeführten Serverabfragen; beispielsweise lädt „Musik“ nicht gleichzeitig Radio, Live-TV, Filme und Podcasts. Abgebrochene Suchläufe werden korrekt behandelt, alte Ergebnisse bleiben beim Wechsel des Suchbegriffs oder Filters nicht kurz stehen. Globale Suche enthält weiterhin niemals die private 18+-Bibliothek.
+- **Flüssigeres Scrollen:** Filme, Radio, TV und Album-Cover verwenden ein echtes adaptives `LazyVerticalGrid` mit stabilen IDs statt zeilenweiser `chunked`-Listen. Nachladen hängt Inhalte an, ohne vorhandene Karten unnötig umzubauen. Auf schmalen Telefonen bleibt die Ansicht zweispaltig; Tablets passen die Anzahl der Spalten an.
+- **Ruhigere Cover-Ansichten:** Coil-Bildanfragen werden über Compose-Recompositions hinweg wiederverwendet. Statische Platzhalter ersetzen die vielen gleichzeitig animierten Ladeindikatoren; das entlastet UI-Thread und GPU. Poster-Fallbacks, begrenzte Thumbnail-Retries sowie sitzungsgetrennte Bild-Caches bleiben erhalten.
+- **Qualität:** Ein zusätzlicher Regressionstest prüft, welche API-Bereiche der jeweilige Suchfilter durchsucht. Automatisierte APK-/Lint-/Unit-Test-Prüfung für Mobile und Automotive weiterhin über GitHub Actions. Echte Geräte-, Server- und Cast-Langzeittests stehen noch aus.
+
 ## v0.6.0-beta.1 – Smart Discovery und immersiver Streaming-Client
 
 **Adaptive Bedienung:** Smartphone- und kompakte Querformatfenster behalten die Daumennavigation am unteren Rand. Große Tablets/Fenster wechseln automatisch auf die Material-3-Seitenleiste, sodass Medienposter mehr vertikale Fläche erhalten. Standardmäßig ist das Design dark-first, auf Cover, Filme und Musik ausgerichtet.
