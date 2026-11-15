@@ -8,6 +8,7 @@ import androidx.lifecycle.lifecycleScope
 import android.content.ComponentName
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -221,6 +222,26 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var onlyFavorites by remember { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
 
+    BackHandler(enabled = connected && (globalSearchOpen || podcastsOpen)) {
+        if (globalSearchOpen) globalSearchOpen = false
+        else if (podcastsOpen) podcastsOpen = false
+    }
+    // The Android system Back button follows the same breadcrumb hierarchy as
+    // the on-screen controls instead of abruptly closing the streaming app.
+    BackHandler(enabled = connected && !globalSearchOpen && !podcastsOpen &&
+        (album.isNotBlank() || artist.isNotBlank() || folder.isNotBlank())) {
+        when {
+            album.isNotBlank() -> {
+                album = ""; albumName = ""; browse = MusicBrowse.ALBUMS; refresh()
+            }
+            artist.isNotBlank() -> {
+                artist = ""; artistName = ""; browse = MusicBrowse.ARTISTS; refresh()
+            }
+            folder.isNotBlank() -> {
+                folder = folder.substringBeforeLast('/', ""); refresh()
+            }
+        }
+    }
     LaunchedEffect(connected, session.server, session.username) {
         favorites.clear(); recent.clear()
         if (connected) {
@@ -1135,7 +1156,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(9.dp)) {
                             Text(when {
                                 current?.id?.startsWith("podcast:") == true -> "PODCAST · JETZT LÄUFT"
-                                current?.kind == EntryKind.RADIO -> "LIVE · INTERNERNETRADIO"
+                                current?.kind == EntryKind.RADIO -> "LIVE · INTERNETRADIO"
                                 else -> "TROMUWELLE · JETZT LÄUFT"
                             }, Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                 color = MaterialTheme.colorScheme.primary,

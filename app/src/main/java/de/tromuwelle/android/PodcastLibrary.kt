@@ -2,6 +2,7 @@ package de.tromuwelle.android
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -161,6 +162,12 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
             total = data.second
         } catch (e: Exception) { message = e.message ?: "Folgen konnten nicht geladen werden." }
         finally { busy = false }
+    }
+    BackHandler(enabled = selectedFeed.isNotBlank() || tab != "shows") {
+        if (selectedFeed.isNotBlank()) {
+            selectedFeed = ""; offset = 0
+        }
+        tab = "shows"
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {

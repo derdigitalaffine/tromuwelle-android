@@ -89,7 +89,9 @@ fun StreamScaffold(
 ) {
     // Larger Android tablets use a left rail, leaving the whole vertical
     // viewport for the actual media. Compact phones retain thumb navigation.
-    val expandedNavigation = LocalConfiguration.current.screenWidthDp >= 720
+    val configuration = LocalConfiguration.current
+    val expandedNavigation = configuration.screenWidthDp >= 720 &&
+        configuration.screenHeightDp >= 520
     var playbackProgress by remember(player) { mutableFloatStateOf(0f) }
     LaunchedEffect(player) {
         while (isActive) {
