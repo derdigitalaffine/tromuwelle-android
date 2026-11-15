@@ -25,6 +25,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /** Original Tromuwelle streaming identity: content-first, dark, accessible, no third-party branding. */
@@ -64,6 +66,7 @@ enum class StreamTab(val title: String, val icon: ImageVector) {
 
 @Composable
 fun StreamScaffold(
+    session: TromuwelleSession,
     tab: StreamTab,
     onTab: (StreamTab) -> Unit,
     onSearch: () -> Unit,
@@ -77,6 +80,17 @@ fun StreamScaffold(
     onClosePlayer: () -> Unit,
     content: @Composable (PaddingValues) -> Unit
 ) {
+    var playbackProgress by remember(player) { mutableFloatStateOf(0f) }
+    LaunchedEffect(player) {
+        while (isActive) {
+            val duration = player?.duration ?: -1L
+            val position = player?.currentPosition ?: 0L
+            playbackProgress = if (duration in 1..Long.MAX_VALUE)
+                (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                else 0f
+            delay(600)
+        }
+    }
     Scaffold(containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 6.dp),
@@ -119,12 +133,16 @@ fun StreamScaffold(
                         color = MaterialTheme.colorScheme.primaryContainer,
                         tonalElevation = 2.dp
                     ) {
+                        Column {
                         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(43.dp).clip(RoundedCornerShape(10.dp))
-                                .background(Accent.copy(alpha = 0.14f)),
+                            Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+                                .background(Accent.copy(alpha = 0.16f)),
                                 contentAlignment = Alignment.Center) {
-                                Icon(if (video) Icons.Rounded.Movie else Icons.Rounded.GraphicEq,
-                                    contentDescription = null, tint = Accent)
+                                if (current != null)
+                                    AuthenticatedArtwork(session, current, Modifier.fillMaxSize())
+                                else
+                                    Icon(Icons.Rounded.GraphicEq,
+                                        contentDescription = null, tint = Accent)
                             }
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
@@ -149,6 +167,14 @@ fun StreamScaffold(
                             IconButton(onClick = onClosePlayer) {
                                 Icon(Icons.Rounded.Close, contentDescription = "Player schließen")
                             }
+                        }
+                        if (playbackProgress > 0f && current?.kind !in
+                            listOf(EntryKind.RADIO, EntryKind.TV)) {
+                            LinearProgressIndicator(progress = { playbackProgress },
+                                modifier = Modifier.fillMaxWidth().height(3.dp),
+                                color = Accent,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant)
+                        }
                         }
                     }
                 }
