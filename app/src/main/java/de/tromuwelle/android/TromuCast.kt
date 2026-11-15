@@ -145,7 +145,21 @@ fun CastOutputSheet(
                             require(rawPath.startsWith("/api/cast/stream/")) {
                                 "Ungültiger Wiedergabelink des Servers."
                             }
-                            val mediaUrl = session.url(rawPath)
+                            val optionalLan = result.optString("lan_url")
+                            val mediaUrl = if (optionalLan.isNotBlank()) {
+                                // Only the server's expressly enabled LAN bridge may return
+                                // a cleartext URL. It carries ONLY a random media grant,
+                                // never an account cookie or an authenticated API request.
+                                val candidate = Uri.parse(optionalLan)
+                                val ip = candidate.host.orEmpty()
+                                val validIp = ip.matches(
+                                    Regex("(?:[0-9]{1,3}\\\\.){3}[0-9]{1,3}"))
+                                require(candidate.scheme == "http" && candidate.port == 8098 &&
+                                    candidate.encodedPath == rawPath && validIp) {
+                                    "Ungültiger LAN-Cast-Link vom Server."
+                                }
+                                optionalLan
+                            } else session.url(rawPath)
                             val mime = result.getString("mime")
                             val castMetadata = MediaMetadata(if (chosen.kind == "video")
                                 MediaMetadata.MEDIA_TYPE_MOVIE
@@ -207,11 +221,13 @@ fun CastOutputSheet(
             }
             if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.bodySmall)
-            Text("Wichtig: Dein Cast-Gerät benötigt Zugang zum Server über ein von " +
-                "ihm selbst akzeptiertes HTTPS-Zertifikat. Ein ausschließlich auf dem Handy " +
-                "freigegebenes selbstsigniertes Zertifikat reicht für Chromecast nicht aus. " +
-                "Cast-Links sind auf genau einen Titel begrenzt und laufen nach spätestens " +
-                "vier Stunden ab.",
+            Text("Cast-Geräte müssen den Tromuwelle-Server selbst erreichen können. " +
+                "Über HTTPS brauchen sie ein öffentlich vertrauenswürdiges Zertifikat; " +
+                "die lokale Android-Zertifikatsfreigabe reicht dafür nicht. " +
+                "Alternativ gibt es im Server einen ausdrücklich aktivierbaren LAN-Proxy " +
+                "(Port 8098), der nur zeitlich begrenzte Medienlinks bereitstellt. " +
+                "Der LAN-Stream ist unverschlüsselt und sollte nur in einem vertrauenswürdigen WLAN " +
+                "verwendet werden. Kein Passwort und kein Session-Cookie werden übertragen.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
