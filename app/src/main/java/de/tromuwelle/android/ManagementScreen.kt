@@ -22,7 +22,7 @@ import org.json.JSONObject
 
 private enum class AdminArea(val title: String) {
     PLAYLISTS("TV-Playlists"), RADIO("Radio"), STREAM("Streaming"), ROOTS("Medienquellen"),
-    USERS("Benutzer"), SCANS("Indexierung")
+    USERS("Benutzer"), SCANS("Indexierung"), SECURITY("Sicherheit")
 }
 
 private data class RootDraft(val name: String, val path: String,
@@ -69,6 +69,9 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
     var users by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var settings by remember { mutableStateOf(JSONObject()) }
     var roots by remember { mutableStateOf<List<RootDraft>>(emptyList()) }
+    var legacyStatus by remember { mutableStateOf(JSONObject()) }
+    var legacyScope by remember { mutableStateOf("all") }
+    var legacyPassword by remember { mutableStateOf("") }
     var index by remember { mutableStateOf(JSONObject()) }
     var musicIndex by remember { mutableStateOf(JSONObject()) }
     var confirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
@@ -111,6 +114,10 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                     AdminArea.USERS -> {
                         if (session.account.managed) users = withContext(Dispatchers.IO) { api.users().objects() }
                         settings = withContext(Dispatchers.IO) { api.settings() }
+                    }
+                    AdminArea.SECURITY -> {
+                        legacyStatus = withContext(Dispatchers.IO) { session.status(session.server) }
+                        legacyScope = legacyStatus.optString("scope", "all")
                     }
                     AdminArea.SCANS -> {
                         index = try { withContext(Dispatchers.IO) { api.mediaIndex() } }
@@ -458,6 +465,50 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                             }) { Text("Löschen") }
                         }
                         HorizontalDivider()
+                    }
+                }
+                AdminArea.SECURITY -> {
+                    item {
+                        Text("Sicherheit", style = MaterialTheme.typography.titleLarge)
+                        if(session.account.managed) {
+                            Text("Persönliche Konten sind aktiviert. Rollen und Medienrechte unter Benutzer verwalten.")
+                        } else {
+                            Text("Klassischer Sammel-Passwortschutz", style = MaterialTheme.typography.titleMedium)
+                            Text("Schutz aktiviert: " +
+                                if(legacyStatus.optBoolean("enabled")) "Ja" else "Nein")
+                            Text("Schutzbereich")
+                            Row(Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("all", "media", "settings", "media_settings", "folders").forEach { scope ->
+                                    FilterChip(selected = legacyScope == scope, onClick = {
+                                        legacyScope = scope
+                                    }, label = { Text(scope) })
+                                }
+                            }
+                            OutlinedTextField(legacyPassword, { legacyPassword = it },
+                                label = { Text(if (legacyStatus.optBoolean("enabled"))
+                                    "Bestehendes Passwort" else "Neues Passwort (mindestens 8 Zeichen)") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth())
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(enabled = !busy && legacyPassword.isNotBlank(), onClick = {
+                                    val pass = legacyPassword; val scope = legacyScope
+                                    act("Schutzbereich gespeichert.", {
+                                        api.legacyProtection(true, pass, scope)
+                                        session.persistCurrentCookies()
+                                    })
+                                    legacyPassword = ""
+                                }) { Text("Aktivieren / Ändern") }
+                                OutlinedButton(enabled = !busy && legacyStatus.optBoolean("enabled") &&
+                                    legacyPassword.isNotBlank(), onClick = {
+                                    val pass = legacyPassword; val scope = legacyScope
+                                    act("Passwortschutz deaktiviert.", {
+                                        api.legacyProtection(false, pass, scope)
+                                    })
+                                    legacyPassword = ""
+                                }) { Text("Deaktivieren") }
+                            }
+                        }
                     }
                 }
                 AdminArea.SCANS -> {

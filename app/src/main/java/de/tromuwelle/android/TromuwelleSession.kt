@@ -142,6 +142,9 @@ class TromuwelleSession(private val application: Application) {
         forgetLocal()
     }
 
+    fun persistCurrentCookies() {
+        try { vault.save(server, username, cookies.cookieStore.cookies) } catch (_: Exception) { }
+    }
     fun get(path: String): String = request(server, path, "GET", null)
     fun post(path: String, json: String = "{}"): String = request(server, path, "POST", json)
     fun put(path: String, json: String): String = request(server, path, "PUT", json)

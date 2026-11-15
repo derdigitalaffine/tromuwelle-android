@@ -79,6 +79,9 @@ class TromuwelleApi(private val session: TromuwelleSession) {
     fun updateAdultTags(path: String, tags: JSONArray) = JSONObject(session.put(
         "/api/media/adult/tags?path=${query(path)}", JSONObject().put("tags", tags).toString()
     ))
+    fun legacyProtection(enabled: Boolean, password: String, scope: String) = jsonPost(
+        "/api/auth/protection", JSONObject().put("enabled", enabled)
+            .put("password", password).put("scope", scope).toString())
     fun health() = json("/api/health")
     private fun jsonPost(path: String, body: String = "{}") = JSONObject(session.post(path, body))
 }
