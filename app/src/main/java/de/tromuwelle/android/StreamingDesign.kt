@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -389,28 +393,37 @@ fun StreamLibraryListing(
     val grid = section == LibrarySection.MEDIA || section == LibrarySection.PRIVATE ||
         section == LibrarySection.TV || section == LibrarySection.RADIO ||
         entries.firstOrNull()?.kind in listOf(EntryKind.ALBUM, EntryKind.ARTIST)
-    val screenWidth = LocalConfiguration.current.screenWidthDp
-    val columns = when {
-        screenWidth >= 900 -> 4
-        screenWidth >= 600 -> 3
-        else -> 2
-    }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(if (grid) 12.dp else 0.dp)) {
-        if (grid) {
-            val chunks = entries.chunked(columns)
-            items(chunks.size) { row ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    chunks[row].forEach { entry ->
-                        StreamPosterCard(session, entry, { onOpen(entry) },
-                            Modifier.weight(1f), wide = entry.kind == EntryKind.FILE ||
-                                entry.kind == EntryKind.TV)
+    val canLoadMore = more && !loading && entries.size < total
+    if (grid) {
+        // Native lazy grid with stable media IDs: no eager chunked row lists or
+        // shifting positional keys when pagination appends another page.
+        // Compact phones can still show two posters; tablets scale naturally.
+        val minPosterWidth = if (LocalConfiguration.current.screenWidthDp < 400) 132.dp else 170.dp
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minPosterWidth),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            gridItems(entries, key = { it.kind.name + ":" + it.id }) { entry ->
+                StreamPosterCard(session, entry, { onOpen(entry) },
+                    Modifier.fillMaxWidth(), wide = entry.kind == EntryKind.FILE ||
+                        entry.kind == EntryKind.TV)
+            }
+            if (canLoadMore) {
+                item(key = "load-more", span = { GridItemSpan(maxLineSpan) }) {
+                    TextButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) {
+                        Text("Weitere laden  ·  ${entries.size} von $total")
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Rounded.ExpandMore, null)
                     }
-                    repeat(columns - chunks[row].size) { Spacer(Modifier.weight(1f)) }
                 }
             }
-        } else {
+        }
+    } else {
+        LazyColumn(modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 18.dp)) {
             items(entries, key = { it.kind.name + ":" + it.id }) { entry ->
                 StreamTrackRow(session, entry, isFavorite(entry), { onOpen(entry) },
                     { onFavorite(entry) },
@@ -418,13 +431,15 @@ fun StreamLibraryListing(
                         ({ onDownload(entry) }) else null,
                     if (entry.kind == EntryKind.FILE) ({ onInfo(entry) }) else null)
             }
-        }
-        if (more && !loading && entries.size < total) item {
-            TextButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()
-                .padding(vertical = 6.dp)) {
-                Text("Weitere laden  ·  ${entries.size} von $total")
-                Spacer(Modifier.width(6.dp))
-                Icon(Icons.Rounded.ExpandMore, null)
+            if (canLoadMore) {
+                item(key = "load-more") {
+                    TextButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()
+                        .padding(vertical = 6.dp)) {
+                        Text("Weitere laden  ·  ${entries.size} von $total")
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Rounded.ExpandMore, null)
+                    }
+                }
             }
         }
     }
