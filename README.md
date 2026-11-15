@@ -4,6 +4,22 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 
 **Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (laufender API-Abgleich mit dem aktuellen privaten Tromuwelle-Server).
 
+## v0.6.0-beta.1 – Smart Discovery und immersiver Streaming-Client
+
+**Adaptive Bedienung:** Smartphone- und kompakte Querformatfenster behalten die Daumennavigation am unteren Rand. Große Tablets/Fenster wechseln automatisch auf die Material-3-Seitenleiste, sodass Medienposter mehr vertikale Fläche erhalten. Standardmäßig ist das Design dark-first, auf Cover, Filme und Musik ausgerichtet.
+
+**Medien entdecken:** Die globale Suche ermittelt nach einer kurzen Tipp-Pause echte, serverseitig autorisierte Treffer aus Musik, regulären Filmen, Radio, TV und *Podcastfolgen*. Abschnittsfilter, lokale Relevanzsortierung (exakter Titel vor Wortanfang vor Beschreibung), Ladezustände, qualifizierte Teilfehler und pro Server-/Benutzerkonto separierter lokaler Suchverlauf. Der Verlauf lässt sich vollständig leeren. Die private 18+-Bibliothek bleibt aus der Suche ausgeschlossen, ihre Inhalte werden auch nicht als passive „Gerade aktiv“-Einträge auf der Startseite oder außerhalb der privaten Bibliothek im Mini-Player angezeigt.
+
+**Individuelle Startseite aus echten Daten:** Sechs unabhängige Serverabfragen werden parallel ausgeführt. Echte Medien-Hero-Fläche, Album- und TV-Reihen, Favoriten und sämtliche kürzlich verwendeten Radiosender, gespeicherte Wiedergabefortschritte und *Podcasts weiterhören*. Letzteres verwendet die pro Benutzer gespeicherte `position`/`completed`-Information aus Tromuwelle und öffnet die passende Folge direkt im Media3-Player; keine vorgetäuschte KI-Empfehlung und kein externer Nutzungsdaten-Upload.
+
+**Content-first Bibliotheken:** Medien-Suche automatisch ab zwei Zeichen; kompakte Suche, einzeilige Filtersteuerung, aktiver Reset, einklappbare Codec-, Bitraten- und Qualitätseinstellungen. Die vorhandene Original-/Transcoding- und fein granulierte Medienrechtslogik bleibt serverseitig unverändert. Medienposter enthalten tatsächliche Informationen wie Filmlaufzeit, Live-Status, Radioland oder verfügbare Videoauflösung. Videodetails sind auch auf kurzen Displays scrollbar und bieten den vorhandenen Wiedergabefortschritt mit „Film fortsetzen“.
+
+**Immersiver Audioplayer:** Coverfüllender Titelbereich mit kontrastierendem Overlay, Wiedergabe- und Queue-Steuerung, Vorschaubild des nächsten Titels und je ein direkter Weg zu Android-Audioausgängen und Cast. Der Media3-Hintergrundservice und die auf Zertifikate beschränkte HTTPS-Sitzung bleiben erhalten.
+
+**Podcasts:** Sendungen werden auf kleinen Handys in zwei, auf Tablets in drei bis fünf Cover-Spalten dargestellt. Die Senderseite, Ergebnisse der Podcast-Verzeichnissuche und Folgenansichten zeigen echte RSS-/Directory-Cover. Episodensuche und Verzeichnissuche erfolgen debounced; abonnierte Podcasts, serverseitiger Hörfortschritt, Cache-Steuerung und Transkripte bleiben erhalten. Android-System-Back folgt Feed-/Ordner- und Suchnavigation statt die gesamte App zu beenden.
+
+**Tests / Grenzen:** CI kompiliert und lintet beide Flavors und führt Unit-Tests aus, unter anderem für die Suchrelevanz und Thumbnails. Ausstehend sind echte Android-/Tablet-/AAOS-/Chromecast-Gerätetests, lange Streaming-Sitzungen und Produktiv-Signing. Google Cast bleibt auf Medienarten mit freigegebenen, zeitlich begrenzten serverseitigen Streamtickets begrenzt. Der Hauptserver muss auf einem Stand mit Podcast- und Cast-Endpunkten laufen.
+
 ## v0.5.0-beta.1 – überarbeitete Streaming-UI, echte Thumbnails und Cast
 
 Die Streaming-Startseite enthält nun einen aus dem vorhandenen Medienkatalog gebildeten visuellen Hero, „Weiter ansehen“ anhand lokal gespeicherter Videopositionen, aktuelle Podcastfolgen, eine knappe Bibliotheksübersicht und Ladeplatzhalter. Cover und Poster werden nicht durch künstliche Vorschaubilder ersetzt. Der Mini-Player zeigt authentifiziert geladenes Cover und den aktuellen Wiedergabefortschritt.
@@ -59,11 +75,11 @@ CI prüft Kotlin-Kompilierung, Unit-Tests, Lint und die beiden APKs. Echte Serve
 5. Bei bisher völlig unkonfiguriertem Server „Server / Ersteinrichtung prüfen“ und anschließend Administrator mit mindestens 12-stelligem Passwort und Setup-Token anlegen. Bei aktivem bisherigen Passwortschutz reicht zur Migration das **bestehende Administrationspasswort** (anstelle eines Tokens); neuer Benutzername und neues Passwort werden selbst gewählt.
 6. Bei gültiger Session stellt die App den Login beim nächsten Start automatisch wieder her; der Server bestätigt zuvor die aktuelle Berechtigung.
 
-## APK – v0.5.0-beta.1
+## APK – v0.6.0-beta.1
 
 Es gibt zwei separat installierbare Varianten:
-- **`tromuwelle-android-v0.5.0-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
-- **`tromuwelle-automotive-video-v0.5.0-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
+- **`tromuwelle-android-v0.6.0-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
+- **`tromuwelle-automotive-video-v0.6.0-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
 
 Video auf Android Auto ist **nicht** verfügbar. Dieser Unterschied ist eine Plattformbeschränkung, kein fehlender Schalter. Diese APKs verwenden unterschiedliche Anwendungs-IDs; die AAOS-Version ersetzt nicht die Handy-Version.
 

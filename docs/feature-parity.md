@@ -130,3 +130,19 @@ Offen: echte Gerätetests, Podcast-E2E mit einem realen Feed, SNI/Caddy-TLS mit 
 | Cast mit privater Caddy-CA | Optionales Backend-Profil cast-lan, Port 8098, zeitlich begrenzter Einzeltitel-Link | Bewusst unsichere LAN-Übertragung; standardmäßig deaktiviert |
 | Podcast-Admin-Cacheverwaltung | /api/podcasts/status, /api/podcasts/settings: days/MB/delete_played | Administratorrecht, separates podcast_cache-Docker-Volume |
 | Gerätetest Cast/Audio/Thumbnail | GitHub CI baut, unit-testet und lintet Code | Echte Geräte und Server nicht im CI verfügbar |
+
+## v0.6.0-beta.1 – Smart Discovery und UX-Abnahme
+
+| Bereich | Native Integration | Datenquelle und Grenzen |
+|---|---|---|
+| Adaptive Navigation | Tablet-NavigationRail; Bottom-Navigation auf Handy/kurzem Querformat | Laufende Display-Breite und -Höhe, kein zusätzlicher SDK-Zwang |
+| Globale Live-Suche | Debounce, Relevanzsortierung, Medien-Kategorien und Podcastfolgen | Parallel/API-getrieben, 18+-Medien ausgeschlossen |
+| Suchverlauf | Letzte acht manuelle Suchanfragen, löschbar, nach Server+Nutzer getrennt | Nur lokale Android-Preferences; kein Cloud-Tracking |
+| Library-Filter | Compact Search, Reset, Qualitäts- und Bitraten-Drawer | Backend-Filter bleiben maßgebend |
+| Home-Performance | Parallel geladene Podcast-/Musik-/Radio-/Video-/TV-Bereiche | Teilfehler isoliert, keine erfundenen Resultate |
+| Podcasts fortsetzen | Server-Podcastpositionen und direkter Start aus Home | Erfordert aktuelle serverseitige subscriptions/progress |
+| Radiostationen zuletzt gehört | Gesamtes erlaubtes Senderverzeichnis statt nur 18 Startsender | Lokal gespeicherte Stations-IDs, Server prüft Zugriffe |
+| Spielerlebnis | Großes Cover, Queue-Vorschau, direkte Cast/Bluetooth-Ausgabe, Filmlaufzeit und Fortsetzen | Media3 + serverseitige Streams |
+| Private Bibliothek | Kein Eintrag der aktiven privaten Wiedergabe in öffentlicher Home oder Mini-Player außerhalb Private | Kein globales Erwachsenen-Content-Discovering |
+| Podcast-Cover | Adaptive 2–5-Spalten, Directory-/Feed-Bilder, asynchrones Suchen | RSS/Apple-Directory-Cover nur via HTTPS |
+| Hardwareabnahme | Android/AAOS Debug-APKs, JVM-Tests und Android-Lint in CI | Google Cast, Bluetooth-Route, Bildschirmgrößen und reale TLS/FFmpeg-Endpunkte vor Ort testen |
