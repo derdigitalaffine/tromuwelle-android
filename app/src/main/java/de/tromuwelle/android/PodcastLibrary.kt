@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -113,12 +114,16 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
                    onPlay: (JSONObject) -> Unit) {
     val api = remember(session) { TromuPodcasts(session) }
     val scope = rememberCoroutineScope()
+    val width = LocalConfiguration.current.screenWidthDp
+    val podcastColumns = if (width >= 1080) 5 else if (width >= 750) 4
+        else if (width >= 520) 3 else 2
     var tab by remember { mutableStateOf("shows") }
     var feeds by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var episodes by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var total by remember { mutableIntStateOf(0) }
     var selectedFeed by remember { mutableStateOf("") }
     var search by remember { mutableStateOf("") }
+    var effectiveSearch by remember { mutableStateOf("") }
     var directoryQuery by remember { mutableStateOf("") }
     var directoryResults by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var rss by remember { mutableStateOf("") }
@@ -151,12 +156,26 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
         try { feeds = withContext(Dispatchers.IO) { api.feeds() } }
         catch (e: Exception) { message = e.message ?: "Podcasts nicht erreichbar." }
     }
-    LaunchedEffect(tab, selectedFeed, search, status, offset, retry) {
+    LaunchedEffect(search) {
+        delay(350)
+        effectiveSearch = search.trim()
+    }
+    // Directory discovery is opt-in by entering a query, then debounced to
+    // avoid making a remote request for every letter typed.
+    LaunchedEffect(tab, directoryQuery) {
+        val term = directoryQuery.trim()
+        if (tab != "directory" || term.length < 3) return@LaunchedEffect
+        delay(550)
+        try {
+            directoryResults = withContext(Dispatchers.IO) { api.directory(term) }
+        } catch (_: Exception) { /* Explicit search button provides errors/retry. */ }
+    }
+    LaunchedEffect(tab, selectedFeed, effectiveSearch, status, offset, retry) {
         if (tab != "episodes") return@LaunchedEffect
         busy = true
         try {
             val data = withContext(Dispatchers.IO) {
-                api.episodes(selectedFeed, search.trim(), status, offset)
+                api.episodes(selectedFeed, effectiveSearch, status, offset)
             }
             episodes = if (offset == 0) data.first else episodes + data.first
             total = data.second
@@ -233,7 +252,7 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
                 }
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(feeds.chunked(2)) { row ->
+                    items(feeds.chunked(podcastColumns)) { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             row.forEach { feed ->
                                 Column(Modifier.weight(1f)) {
@@ -255,7 +274,9 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
                                     }
                                 }
                             }
-                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                            repeat(podcastColumns - row.size) {
+                                Spacer(Modifier.weight(1f))
+                            }
                         }
                     }
                 }
@@ -297,6 +318,13 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
                         val already = feeds.any { it.optString("url") == item.optString("url") }
                         Row(Modifier.fillMaxWidth().padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
+                            val cover = item.optString("image")
+                                .takeIf { it.startsWith("https://") } ?: ""
+                            AuthenticatedArtwork(session,
+                                LibraryEntry(item.optString("url"), item.optString("title"),
+                                    kind = EntryKind.ALBUM, artwork = cover),
+                                Modifier.size(58.dp).clip(RoundedCornerShape(13.dp)))
+                            Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(item.optString("title"), fontWeight = FontWeight.Bold)
                                 Text(item.optString("author"),
@@ -315,12 +343,18 @@ fun StreamPodcasts(session: TromuwelleSession, onBack: () -> Unit,
             }
             else -> {
                 val feed = feeds.firstOrNull { it.optString("id") == selectedFeed }
-                if (feed != null) Column(Modifier.padding(horizontal = 16.dp)) {
-                    Text(feed.optString("title"), fontWeight = FontWeight.ExtraBold,
-                        style = MaterialTheme.typography.titleLarge)
-                    Text(feed.optString("description"), maxLines = 2,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (feed != null) Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    AuthenticatedArtwork(session, podcastEntry(feed, true),
+                        Modifier.size(96.dp).clip(RoundedCornerShape(20.dp)))
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(feed.optString("title"), fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleLarge, maxLines = 2)
+                        Text(feed.optString("description"), maxLines = 3,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 OutlinedTextField(search, { search = it.take(200); offset = 0 },
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
