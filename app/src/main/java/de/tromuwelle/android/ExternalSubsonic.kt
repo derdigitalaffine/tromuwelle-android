@@ -214,6 +214,10 @@ class SubsonicClient(val source: SubsonicSource) {
         if (albumId.isNotBlank()) {
             jsonObjects(call("getAlbum", mapOf("id" to albumId))
                 .optJSONObject("album")?.optJSONArray("song"))
+        } else if (query.isBlank()) {
+            // Empty search3 queries are not portable between Subsonic servers.
+            jsonObjects(call("getRandomSongs", mapOf("size" to "100"))
+                .optJSONObject("randomSongs")?.optJSONArray("song"))
         } else {
             jsonObjects(call("search3", mapOf("query" to query, "songCount" to "100",
                 "songOffset" to offset.toString()))
