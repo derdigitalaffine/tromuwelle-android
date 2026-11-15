@@ -483,6 +483,7 @@ private fun StreamRail(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StreamVideoDetails(session: TromuwelleSession, entry: LibraryEntry,
                        onDismiss: () -> Unit, onPlay: () -> Unit,

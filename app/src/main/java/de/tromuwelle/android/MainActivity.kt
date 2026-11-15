@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -667,24 +668,6 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         TextButton(onClick = { current?.let { playItem(it) } }) { Text("Neu starten") }
                     }
                 }
-
-                LibrarySection.entries.filter { it != LibrarySection.PRIVATE }.forEach { item ->
-                    FilterChip(selected = item == section, onClick = { switchSection(item) },
-                        label = { Text(item.label) })
-                }
-                if (session.account.isAdmin) TextButton(onClick = { managementPage = true }) {
-                    Text("Verwaltung")
-                }
-                TextButton(onClick = { externalPage = true }) { Text("Weitere Musikserver") }
-                TextButton(onClick = { accountPage = true }) { Text("Konto") }
-                TextButton(onClick = {
-                    player?.stop(); player?.clearMediaItems(); current = null
-                    scope.launch {
-                        withContext(Dispatchers.IO) { session.logout() }
-                        connected = false
-                    }
-                }) { Text("Abmelden") }
-            }
 
             if (section == LibrarySection.MUSIC) {
                  musicQuality?.let { qualitySummary ->
