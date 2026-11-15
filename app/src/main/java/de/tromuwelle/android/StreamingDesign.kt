@@ -279,6 +279,26 @@ fun StreamPosterCard(session: TromuwelleSession, entry: LibraryEntry,
                         .padding(horizontal = 6.dp, vertical = 3.dp),
                     style = MaterialTheme.typography.labelSmall, color = Color.White)
             }
+            val infoChip = when {
+                entry.kind == EntryKind.TV -> "LIVE"
+                entry.kind == EntryKind.RADIO -> entry.country.ifBlank { "RADIO" }.uppercase()
+                entry.isVideo() && entry.duration > 0L -> {
+                    val minutes = entry.duration / 60L
+                    if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m"
+                    else "${minutes.coerceAtLeast(1)} Min."
+                }
+                else -> ""
+            }
+            if (infoChip.isNotBlank()) {
+                Text(infoChip,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(Color.Black.copy(alpha = 0.78f))
+                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold)
+            }
             if (entry.playable()) Icon(Icons.Rounded.PlayCircleFilled,
                 contentDescription = null, tint = Color.White.copy(alpha = 0.9f),
                 modifier = Modifier.align(Alignment.BottomEnd).padding(9.dp).size(25.dp))
