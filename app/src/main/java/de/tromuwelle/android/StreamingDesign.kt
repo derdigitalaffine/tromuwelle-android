@@ -27,6 +27,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -432,41 +436,61 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
     }
     LaunchedEffect(session, session.server, session.username, generation) {
         loading = true; failed = false
+        // These six independent API requests run concurrently over the same
+        // cookie/TLS client, so one slow NAS thumbnail/index cannot serialize
+        // the entire Home feed. Each rail can fail without hiding the others.
         val next = withContext(Dispatchers.IO) {
-            val catalog = TromuwelleCatalog(session)
-            var errors = 0
-            fun safe(section: LibrarySection, browse: MusicBrowse = MusicBrowse.TRACKS,
-                     sort: String = "name", max: Int = 18): List<LibraryEntry> =
-                try { catalog.load(section, browse = browse, sort = sort).items.take(max) }
-                catch (_: Exception) { errors++; emptyList() }
-            val podcastItems = try {
-                TromuPodcasts(session).episodes(limit = 80).first
-            } catch (e: Exception) {
-                if (e !is ServerException || e.status !in listOf(403, 404)) errors++
-                emptyList()
+            coroutineScope {
+                val catalog = TromuwelleCatalog(session)
+                val errors = AtomicInteger(0)
+                fun safe(section: LibrarySection, browse: MusicBrowse = MusicBrowse.TRACKS,
+                         sort: String = "name", max: Int = 18): List<LibraryEntry> =
+                    try { catalog.load(section, browse = browse, sort = sort).items.take(max) }
+                    catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { errors.incrementAndGet(); emptyList() }
+
+                val albums = async { safe(LibrarySection.MUSIC, MusicBrowse.ALBUMS) }
+                val tracks = async { safe(LibrarySection.MUSIC) }
+                val movies = async {
+                    safe(LibrarySection.MEDIA, sort = "newest")
+                        .filter { it.kind == EntryKind.FILE && !it.audio }
+                }
+                val radio = async { safe(LibrarySection.RADIO, max = 1500) }
+                val television = async { safe(LibrarySection.TV, max = 250) }
+                val podcastItems = async {
+                    try {
+                        TromuPodcasts(session).episodes(limit = 80).first
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) {
+                        if (e !is ServerException || e.status !in listOf(403, 404)) {
+                            errors.incrementAndGet()
+                        }
+                        emptyList()
+                    }
+                }
+                val episodes = podcastItems.await()
+                val snapshot = HomeSnapshot(
+                    albums = albums.await(),
+                    tracks = tracks.await(),
+                    movies = movies.await(),
+                    radio = radio.await(),
+                    tv = television.await(),
+                    podcasts = episodes.map { episode ->
+                        LibraryEntry(
+                            id = "podcast:" + episode.optString("id"),
+                            title = episode.optString("title"),
+                            description = episode.optString("feed_title"),
+                            kind = EntryKind.TRACK,
+                            duration = episode.optLong("duration"),
+                            artwork = episode.optString("image")
+                                .ifBlank { episode.optString("feed_image") }
+                                .takeIf { it.startsWith("https://") } ?: ""
+                        )
+                    },
+                    podcastEpisodes = episodes
+                )
+                snapshot to errors.get()
             }
-            val s = HomeSnapshot(
-                albums = safe(LibrarySection.MUSIC, MusicBrowse.ALBUMS),
-                tracks = safe(LibrarySection.MUSIC),
-                movies = safe(LibrarySection.MEDIA, sort = "newest")
-                    .filter { it.kind == EntryKind.FILE && !it.audio },
-                radio = safe(LibrarySection.RADIO, max = 1500),
-                tv = safe(LibrarySection.TV, max = 250),
-                podcasts = podcastItems.map { episode ->
-                    LibraryEntry(
-                        id = "podcast:" + episode.optString("id"),
-                        title = episode.optString("title"),
-                        description = episode.optString("feed_title"),
-                        kind = EntryKind.TRACK,
-                        duration = episode.optLong("duration"),
-                        artwork = episode.optString("image")
-                            .ifBlank { episode.optString("feed_image") }
-                            .takeIf { it.startsWith("https://") } ?: ""
-                    )
-                },
-                podcastEpisodes = podcastItems
-            )
-            s to errors
         }
         snapshot = next.first
         failed = next.second > 0
