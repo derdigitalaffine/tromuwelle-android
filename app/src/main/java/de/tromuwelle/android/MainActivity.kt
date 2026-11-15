@@ -613,6 +613,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         }
     } else {
         StreamScaffold(
+            session = session,
             tab = streamTab,
             onTab = { target ->
                 globalSearchOpen = false
