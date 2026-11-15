@@ -1,6 +1,9 @@
 package de.tromuwelle.android
 
 import androidx.compose.foundation.clickable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.media3.common.Player
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,7 +25,7 @@ import org.json.JSONObject
  * credential changes run off the main thread. No credentials or stream URLs shown in UI.
  */
 @Composable
-fun ExternalSubsonicScreen(onClose: () -> Unit,
+fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
                            onPlay: (SubsonicSource, List<JSONObject>, Int) -> Unit) {
     val context = LocalContext.current
     val store = remember(context) { SubsonicSourceStore(context) }
@@ -36,6 +39,15 @@ fun ExternalSubsonicScreen(onClose: () -> Unit,
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var section by remember { mutableStateOf("artists") }
+    var playlistId by remember { mutableStateOf("") }
+    var playlistName by remember { mutableStateOf("") }
+    var createPlaylistName by remember { mutableStateOf("") }
+    var playlistTargets by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var actionSong by remember { mutableStateOf<JSONObject?>(null) }
+    var lyricsSong by remember { mutableStateOf<JSONObject?>(null) }
+    var playlistPickerSong by remember { mutableStateOf<JSONObject?>(null) }
+    var downloadSong by remember { mutableStateOf<JSONObject?>(null) }
+    var confirmPlaylistDelete by remember { mutableStateOf(false) }
     var artistId by remember { mutableStateOf("") }
     var albumId by remember { mutableStateOf("") }
     var search by remember { mutableStateOf("") }
@@ -44,6 +56,22 @@ fun ExternalSubsonicScreen(onClose: () -> Unit,
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf<SubsonicSource?>(null) }
+    val downloadPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val source = selected
+        val song = downloadSong
+        if (uri != null && source != null && song != null) {
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        SubsonicClient(source).downloadTo(context, song.optString("id"), uri)
+                    }
+                    error = "Download erfolgreich."
+                } catch (e: Exception) { error = e.message ?: "Download fehlgeschlagen." }
+                downloadSong = null
+            }
+        } else downloadSong = null
+    }
 
     fun load(more: Boolean = false) {
         val server = selected ?: return
@@ -63,6 +91,12 @@ fun ExternalSubsonicScreen(onClose: () -> Unit,
                         "albums" -> client.albums(currentArtist, start).filter {
                             it.optString("name").contains(currentSearch, ignoreCase = true)
                         }
+                        "playlistTracks" -> {
+                            val playlist = client.playlist(playlistId)
+                            playlistName = playlist.optString("name")
+                            val list = playlist.optJSONArray("entry") ?: org.json.JSONArray()
+                            (0 until list.length()).mapNotNull { list.optJSONObject(it) }
+                        }
                         "playlists" -> client.playlists().filter { it.optString("name")
                             .contains(currentSearch, ignoreCase = true) }
                         else -> client.songs(currentSearch, currentAlbum, start)
@@ -77,7 +111,7 @@ fun ExternalSubsonicScreen(onClose: () -> Unit,
     }
     fun open(source: SubsonicSource) {
         selected = source
-        section = "artists"; artistId = ""; albumId = ""; search = ""
+        section = "artists"; artistId = ""; albumId = ""; playlistId = ""; search = ""
         offset = 0; rows = emptyList()
         load()
     }
@@ -131,6 +165,38 @@ fun ExternalSubsonicScreen(onClose: () -> Unit,
                     }, label = { Text(label) })
                 }
             }
+            if (section == "playlists") {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    OutlinedTextField(createPlaylistName, { createPlaylistName = it },
+                        label = { Text("Neue Playlist") }, modifier = Modifier.weight(1f))
+                    Button(enabled = !busy && createPlaylistName.trim().isNotBlank(), onClick = {
+                        val server = selected ?: return@Button
+                        val name = createPlaylistName.trim()
+                        scope.launch {
+                            busy = true
+                            try {
+                                withContext(Dispatchers.IO) { SubsonicClient(server).createPlaylist(name) }
+                                createPlaylistName = ""; load()
+                            } catch (e: Exception) { error = e.message ?: "Anlegen fehlgeschlagen." }
+                            finally { busy = false }
+                        }
+                    }) { Text("+") }
+                }
+            }
+            if (section == "playlistTracks") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { section = "playlists"; playlistId = ""; load() }) {
+                        Text("‹ Playlists")
+                    }
+                    Button(enabled = rows.isNotEmpty(), onClick = {
+                        val server = selected ?: return@Button
+                        onPlay(server, rows, 0)
+                    }) { Text("Alle abspielen") }
+                    TextButton(onClick = { confirmPlaylistDelete = true }) { Text("Löschen") }
+                }
+                Text(playlistName + " · " + rows.size + " Titel",
+                    style = MaterialTheme.typography.titleMedium)
+            }
             if (artistId.isNotBlank() || albumId.isNotBlank()) {
                 TextButton(onClick = {
                     if (albumId.isNotBlank()) { albumId = ""; section = "albums" }
@@ -158,19 +224,11 @@ fun ExternalSubsonicScreen(onClose: () -> Unit,
                             "artists" -> { artistId = entry.optString("id"); section = "albums"; search = ""; load() }
                             "albums" -> { albumId = entry.optString("id"); section = "songs"; search = ""; load() }
                             "playlists" -> {
-                                val server = selected ?: return@clickable
-                                scope.launch {
-                                    busy = true
-                                    try {
-                                        val songs = withContext(Dispatchers.IO) {
-                                            val playlist = SubsonicClient(server).playlist(entry.optString("id"))
-                                            val items = playlist.optJSONArray("entry") ?: org.json.JSONArray()
-                                            (0 until items.length()).mapNotNull { items.optJSONObject(it) }
-                                        }
-                                        onPlay(server, songs, 0)
-                                    } catch (e: Exception) { error = e.message ?: "Playlist fehlgeschlagen." }
-                                    finally { busy = false }
-                                }
+                                playlistId = entry.optString("id")
+                                playlistName = entry.optString("name")
+                                section = "playlistTracks"
+                                search = ""
+                                load()
                             }
                             else -> {
                                 val server = selected ?: return@clickable
@@ -183,8 +241,9 @@ fun ExternalSubsonicScreen(onClose: () -> Unit,
                             if (description.isNotBlank())
                                 Text(description, style = MaterialTheme.typography.bodySmall)
                         }
-                        if (section == "songs" || section == "playlists") Text("▶")
-                        else Text("›")
+                        if (section == "songs" || section == "playlistTracks") {
+                            TextButton(onClick = { actionSong = entry }) { Text("⋮") }
+                        } else Text("›")
                     }
                     HorizontalDivider()
                 }
