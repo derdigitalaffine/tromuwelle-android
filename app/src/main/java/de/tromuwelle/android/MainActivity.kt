@@ -503,7 +503,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             serverHasAccounts = status.optBoolean("managed")
                             error = if (setupRequired) "Ersteinrichtung erforderlich: Administrator anlegen."
                                 else "Server erreichbar. Bitte anmelden."
-                        } catch (e: Exception) { error = e.message ?: "Prüfung fehlgeschlagen." }
+                        } catch (e: Exception) { error = tlsConnectionDiagnostic(e) }
                     }
                 }) { Text("Server / Ersteinrichtung prüfen") }
                 if (setupRequired) {
@@ -529,7 +529,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             server = session.server
                             connected = true
                             refresh()
-                        } catch (e: Exception) { error = e.message ?: "Anmeldung fehlgeschlagen" }
+                        } catch (e: Exception) { error = tlsConnectionDiagnostic(e) }
                         finally { connecting = false }
                     }
                 }) { Text(if (connecting) "Verbinde …" else "Anmelden") }

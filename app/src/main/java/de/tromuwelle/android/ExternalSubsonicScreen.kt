@@ -431,7 +431,7 @@ fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
                         selected = if (selected?.id == source.id) source else selected
                         password = ""; error = ""; showEditor = false
                     } catch (e: Exception) {
-                        error = e.message ?: "Verbindung fehlgeschlagen."
+                        error = tlsConnectionDiagnostic(e)
                     } finally { busy = false }
                 }
             }) { Text("Verbindung testen & speichern") }

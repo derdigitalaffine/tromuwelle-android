@@ -48,7 +48,7 @@ fun CertificateTrustControl(address: String, modifier: Modifier = Modifier) {
                         withContext(Dispatchers.IO) { store.inspect(address) }
                     } catch (e: Exception) {
                         error = "Zertifikatsprüfung fehlgeschlagen: " +
-                            (e.localizedMessage ?: "TLS-Server nicht erreichbar.")
+                            tlsConnectionDiagnostic(e)
                         null
                     } finally { busy = false }
                 }
