@@ -207,7 +207,7 @@ data class LyricLine(val timeMs: Long, val text: String)
 
 /** LRC supports multiple timestamps per line and hundredths or thousandths of a second. */
 fun parseSyncedLyrics(input: String): List<LyricLine> {
-    val marker = Regex("""\\[(\\d{1,3}):(\\d{2})(?:[.,](\\d{1,3}))?]""")
+    val marker = Regex("""\[(\d{1,3}):(\d{2})(?:[.,](\d{1,3}))?\]""")
     return input.lineSequence().flatMap { row ->
         val matches = marker.findAll(row).toList()
         val text = marker.replace(row, "").trim()
