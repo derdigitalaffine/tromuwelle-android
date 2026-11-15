@@ -432,6 +432,30 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         }
     }
 
+    /** Same podcast playback flow for search, home and the subscribed-episodes view. */
+    fun playPodcastEpisode(episode: JSONObject) {
+        try {
+            val ctl = player ?: throw IllegalStateException("Player wird gestartet. Bitte erneut versuchen.")
+            val item = TromuPodcasts(session).mediaItem(episode)
+            ctl.setMediaItem(item)
+            ctl.prepare()
+            val position = (episode.optDouble("position").coerceAtLeast(0.0) * 1000).toLong()
+            if (position > 0) ctl.seekTo(position)
+            ctl.play()
+            activePodcast = episode
+            current = LibraryEntry("podcast:" + episode.optString("id"),
+                episode.optString("title"), episode.optString("feed_title"),
+                EntryKind.TRACK, duration = episode.optLong("duration"),
+                artwork = episode.optString("image").ifBlank {
+                    episode.optString("feed_image") }.takeIf {
+                    it.startsWith("https://") } ?: "")
+            playbackError = ""
+            audioSheetOpen = true
+        } catch (e: Exception) {
+            playbackError = e.message ?: "Podcastfolge konnte nicht abgespielt werden."
+        }
+    }
+
     fun openEntry(entry: LibraryEntry) {
         when (entry.kind) {
             EntryKind.FOLDER -> { folder = entry.path; search = ""; refresh() }
@@ -651,32 +675,16 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             globalSearchOpen = false; switchSection(type); openEntry(entry)
                         },
                         onSection = { switchSection(it); globalSearchOpen = false },
+                        onPodcast = { episode ->
+                            playPodcastEpisode(episode)
+                        },
                         onFavorite = { toggleFavorite(it) },
                         isFavorite = { (it.kind.name + ":" + it.id) in favorites })
                 }
             } else if (podcastsOpen) {
                 Box(Modifier.fillMaxSize().padding(innerPadding)) {
                     StreamPodcasts(session, onBack = { podcastsOpen = false },
-                        onPlay = { episode ->
-                            try {
-                                val ctl = player ?: throw IllegalStateException("Player wird gestartet, bitte erneut versuchen.")
-                                val media = TromuPodcasts(session).mediaItem(episode)
-                                ctl.setMediaItem(media)
-                                ctl.prepare()
-                                val position = (episode.optDouble("position").coerceAtLeast(0.0) * 1000).toLong()
-                                if (position > 0) ctl.seekTo(position)
-                                ctl.play()
-                                activePodcast = episode
-                                current = LibraryEntry("podcast:" + episode.optString("id"),
-                                    episode.optString("title"), episode.optString("feed_title"),
-                                    EntryKind.TRACK, duration = episode.optLong("duration"),
-                                    artwork = episode.optString("image").ifBlank {
-                                        episode.optString("feed_image") }.takeIf {
-                                        it.startsWith("https://") } ?: "")
-                                playbackError = ""
-                                audioSheetOpen = true
-                            } catch (e: Exception) { playbackError = e.message ?: "Abspielen fehlgeschlagen." }
-                        })
+                        onPlay = { playPodcastEpisode(it) })
                 }
             } else if (streamTab == StreamTab.HOME) {
                 Box(Modifier.fillMaxSize().padding(innerPadding)) {
