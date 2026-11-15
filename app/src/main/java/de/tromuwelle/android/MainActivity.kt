@@ -719,7 +719,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         onSection = { switchSection(it) },
                         onPodcasts = {
                             streamTab = StreamTab.MUSIC; podcastsOpen = true
-                        })
+                        },
+                        onPodcast = { playPodcastEpisode(it) })
                 }
             } else Column(Modifier.fillMaxSize().padding(innerPadding)) {
                 StreamSectionTitle(
