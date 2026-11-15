@@ -4,6 +4,8 @@ import android.app.PictureInPictureParams
 import android.content.ComponentName
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
@@ -90,6 +92,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var adultTag by remember { mutableStateOf("") }
     var mediaSort by remember { mutableStateOf("name") }
     var mediaMinHeight by remember { mutableIntStateOf(0) }
+    var infoEntry by remember { mutableStateOf<LibraryEntry?>(null) }
+    var downloadEntry by remember { mutableStateOf<LibraryEntry?>(null) }
+    var downloadMessage by remember { mutableStateOf("") }
     var adultFacets by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var selectedRadioGenre by remember { mutableStateOf("") }
     var onlyRecent by remember { mutableStateOf(false) }
@@ -144,6 +149,30 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 withContext(Dispatchers.IO) { TromuwelleApi(session).adultFacets().objects() }
             } catch (_: Exception) { emptyList() }
         }
+    }
+
+    val savePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        val entry = downloadEntry
+        if (uri != null && entry != null) {
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        val path = when(entry.kind) {
+                            EntryKind.FILE -> "/api/media/file?path=" + session.query(entry.path) + "&download=true"
+                            EntryKind.TRACK -> "/api/music/stream/" + session.query(entry.id) + "?download=true"
+                            else -> error("Download ist für diesen Eintrag nicht verfügbar.")
+                        }
+                        session.saveTo(path, uri)
+                    }
+                    downloadMessage = "Download erfolgreich abgeschlossen."
+                } catch (e: Exception) {
+                    downloadMessage = e.message ?: "Download fehlgeschlagen."
+                }
+                downloadEntry = null
+            }
+        } else downloadEntry = null
     }
 
     DisposableEffect(player) {
@@ -222,9 +251,23 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             val resume = if (entry.kind == EntryKind.TRACK || entry.kind == EntryKind.FILE)
                 prefs.getLong("resume:" + session.server + ":" + session.username + ":" +
                     entry.kind.name + ":" + entry.id, 0L) else 0L
-            controller.setMediaItems(queue, position, resume.coerceAtLeast(0L))
-            controller.prepare()
-            controller.play()
+            if (entry.kind == EntryKind.FILE && !entry.audio) {
+                scope.launch {
+                    val item = try {
+                        val metadata = withContext(Dispatchers.IO) {
+                            TromuwelleApi(session).mediaMetadata(entry.path)
+                        }
+                        mediaWithSidecarSubtitles(session, queue[0], entry.path, metadata)
+                    } catch (_: Exception) { queue[0] }
+                    controller.setMediaItems(listOf(item), 0, resume.coerceAtLeast(0L))
+                    controller.prepare()
+                    controller.play()
+                }
+            } else {
+                controller.setMediaItems(queue, position, resume.coerceAtLeast(0L))
+                controller.prepare()
+                controller.play()
+            }
             current = entry
             if (entry.kind == EntryKind.RADIO) {
                 recent.remove(entry.id); recent.add(0, entry.id)
@@ -366,6 +409,11 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         }) { Text("Wiedergabe schließen") }
                     }
                 }
+            }
+            if (downloadMessage.isNotBlank()) {
+                Text(downloadMessage, modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { downloadMessage = "" }) { Text("Hinweis schließen") }
             }
             if (section == LibrarySection.MUSIC) {
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
@@ -527,6 +575,15 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             TextButton(onClick = { toggleFavorite(entry) }) {
                                 Text(if ((entry.kind.name + ":" + entry.id) in favorites) "★" else "☆")
                             }
+                            if (entry.kind == EntryKind.FILE || entry.kind == EntryKind.TRACK) {
+                                TextButton(onClick = {
+                                    downloadEntry = entry
+                                    savePicker.launch(entry.path.substringAfterLast('/').ifBlank { entry.title })
+                                }) { Text("↓") }
+                            }
+                            if (entry.kind == EntryKind.FILE && !entry.audio) {
+                                TextButton(onClick = { infoEntry = entry }) { Text("Info") }
+                            }
                         }
                     }
                     HorizontalDivider()
@@ -542,6 +599,10 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 }
             }
         }
+    }
+    infoEntry?.let { entry ->
+        MediaInfoDialog(session, entry, section == LibrarySection.PRIVATE,
+            onDismiss = { infoEntry = null }, onChanged = { refresh() })
     }
     if (fullscreen && current?.isVideo() == true) {
         Dialog(onDismissRequest = { fullscreen = false },
