@@ -2,7 +2,23 @@
 
 Nativ implementierter Android-Client für das **private Hauptrepository Tromuwelle**. Kotlin, Jetpack Compose, Material 3, Media3/ExoPlayer, MediaLibraryService und ein gemeinsamer authentifizierter OkHttp-Transport – **keine WebView**.
 
-**Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (Hauptrepo-Stand `086e8eb69f96`).
+**Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (laufender API-Abgleich mit dem aktuellen privaten Tromuwelle-Server).
+
+## v0.5.0-beta.1 – überarbeitete Streaming-UI, echte Thumbnails und Cast
+
+Die Streaming-Startseite enthält nun einen aus dem vorhandenen Medienkatalog gebildeten visuellen Hero, „Weiter ansehen“ anhand lokal gespeicherter Videopositionen, aktuelle Podcastfolgen, eine knappe Bibliotheksübersicht und Ladeplatzhalter. Cover und Poster werden nicht durch künstliche Vorschaubilder ersetzt. Der Mini-Player zeigt authentifiziert geladenes Cover und den aktuellen Wiedergabefortschritt.
+
+**Thumbnail-Behandlung:** Filmkarte: zuerst `/api/media/artwork?kind=poster`, bei fehlendem Poster unmittelbar `/api/media/thumbnail` (FFmpeg-Standbild aus dem Video), anschließend eine passende Fallback-Illustration. Ordner nutzen `/api/media/folder-thumbnail`. Wenn der Server das Bild noch erzeugt (vorübergehend HTTP 503), folgt eine begrenzte, zunehmend verzögerte Wiederholung; keine unkontrollierten Daueranfragen. Abgesicherte Medienbilder werden mit demselben HTTPS-/Cookie-Client wie Streams geladen. Die Trennung regulärer und privater Medien bleibt bestehen.
+
+**Audioausgabe:** Auf Startseite, Mini-Player und im großen Audio-Player kann die Zielausgabe gewählt werden. Android-interner Lautsprecher, automatisch ausgewählter Systemausgang sowie verbundene Bluetooth-A2DP-/BLE-, USB-, Headset- oder HDMI-Ausgänge werden aus dem Android-System ermittelt. Für Bluetooth-Ausgänge wird auf Android 12+ `BLUETOOTH_CONNECT` nur mit Nutzereinwilligung angefragt. Auswahl via `ExoPlayer.setPreferredAudioDevice` im Audio-Hintergrundservice; das System kann die Route bei Verbindungswechsel/Anrufen überschreiben.
+
+**Google Cast:** Im Output-Sheet lassen sich Google-Cast-Empfänger über das Cast Framework auswählen. Die App fragt unter der HTTPS-Session `POST /api/cast/ticket` an und erhält für einen **konkret freigegebenen** Titel einen randomisierten, kurzlebigen Streamlink, den der Cast-Empfänger ohne Account-Cookie selbst abrufen kann. Unterstützte Arten: Tromuwelle-Musik, eigene Podcasts, Internetradio und Film-/Mediathek-Dateien. Nicht unterstützt: Live-TV/HLS ohne manifestgerechtes Auth-Rewriting und externe Subsonic-Quellen. Der Cast-Dialog bietet Play/Pause/Stop und Trennung; lokale Wiedergabe pausiert nach erfolgreicher Übergabe. Das Cast SDK ist auf die zu Android SDK 35/AGP 8.9 kompatible Version **22.3.1** festgelegt.
+
+**Bei selbstsigniertem Caddy-Zertifikat:** Die lokale Android-Zertifikatsfreigabe vererbt sich **nicht** auf Chromecast. Nutze vorzugsweise ein öffentlich vertrauenswürdiges HTTPS-Zertifikat. Alternativ bietet das Tromuwelle-Hauptrepo einen **explizit einschaltbaren LAN-only Cast-Proxy** auf Port 8098 mit temporären Einzeltitel-Tokens; er ist standardmäßig ausgeschaltet, unverschlüsselt und ausschließlich für vertrauenswürdige private WLANs geeignet. Einrichtung und Sicherheitsgrenzen stehen im Server-README. Androids Benutzerkonto und TLS-Transport verwenden weiterhin ausschließlich HTTPS. Teste Cast auf einem realen Google-TV-/Chromecast-Gerät; erfolgreiche APK-Kompilierung allein belegt keine Receiver-Kompatibilität.
+
+**Podcast-Synchronisation:** Der Server speichert neue Podcast-Downloads in einem separaten Docker-Volume `podcast_cache`. Der Android-Admin-Dialog liest den realen Cache-Verbrauch, die maximale Cachegröße, die Aufbewahrung und `delete_played` über `/api/podcasts/status` und `/api/podcasts/settings`, ohne im Musik-Mount zu schreiben. Die Streaming-Startseite zeigt zusätzlich aktuelle Podcastfolgen. Der Player speichert Hörpositionen und präsentiert serverseitige Transkripte im Audio-Player.
+
+**Abnahme und Grenzen:** Kotlin, Android-Unit-Tests, Lint und mobile/Automotive-APK werden über GitHub Actions geprüft. Offene End-to-End-Tests: tatsächliche Bildgenerierung mit NAS/FFmpeg, Caddy-Zertifikat und optionaler Cast-LAN-Proxy, Bluetooth-Route bei Android-Versionen und Chromecast-Receiver. Stable Signing via geschützte Keystore-Secrets ist noch einzurichten.
 
 ## Native Streaming-Oberfläche ab v0.4.0-beta.1
 
@@ -32,7 +48,7 @@ CI prüft Kotlin-Kompilierung, Unit-Tests, Lint und die beiden APKs. Echte Serve
 - **Verwaltung:** URL-/Datei-TV-Playlists, Radio, HLS-Puffer und Maximalauflösung, Mediathekpfad, Medienquellen inkl. Typ und Schutz, Benutzer/Rollen/Ordnerrechte, Musik-/Videoindex und klassischer Passwortschutz für Altinstallationen.
 - **Konto:** Administrator-Ersteinrichtung mit Setup-Token, Passwortwechsel, Subsonic-App-Passwort und dedizierte API-Schlüssel inklusive Widerruf.
 - **Sicherheit:** HTTPS-Pflicht, sichere Cookie-Authentifizierung für API, HLS, Cover und Streamdateien, in Android Keystore per AES-GCM verschlüsselte Cookies und serverseitige Überprüfung nach App-Neustart, kein gespeichertes Kontopasswort. Optionales, explizites SHA-256-Zertifikatspinning für selbstsignierte Serverzertifikate, mit separater Prüfung, Freigabe und Widerruf.
-- **Android:** minSdk 26 (Android 8.0), Material Hell/Dunkel, MediaSession-Hintergrund-Audio, Benutzersitzungen, Dateiauswahl über SAF.
+- **Android:** minSdk 26 (Android 8.0), Dark-first-Material-3-Theme, MediaLibraryService-Hintergrund-Audio, Benutzersitzungen, Dateiauswahl über SAF.
 
 ## Verbindung
 
@@ -43,11 +59,11 @@ CI prüft Kotlin-Kompilierung, Unit-Tests, Lint und die beiden APKs. Echte Serve
 5. Bei bisher völlig unkonfiguriertem Server „Server / Ersteinrichtung prüfen“ und anschließend Administrator mit mindestens 12-stelligem Passwort und Setup-Token anlegen. Bei aktivem bisherigen Passwortschutz reicht zur Migration das **bestehende Administrationspasswort** (anstelle eines Tokens); neuer Benutzername und neues Passwort werden selbst gewählt.
 6. Bei gültiger Session stellt die App den Login beim nächsten Start automatisch wieder her; der Server bestätigt zuvor die aktuelle Berechtigung.
 
-## APK – v0.4.0-beta.1
+## APK – v0.5.0-beta.1
 
 Es gibt zwei separat installierbare Varianten:
-- **`tromuwelle-android-v0.4.0-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
-- **`tromuwelle-automotive-video-v0.4.0-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
+- **`tromuwelle-android-v0.5.0-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
+- **`tromuwelle-automotive-video-v0.5.0-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
 
 Video auf Android Auto ist **nicht** verfügbar. Dieser Unterschied ist eine Plattformbeschränkung, kein fehlender Schalter. Diese APKs verwenden unterschiedliche Anwendungs-IDs; die AAOS-Version ersetzt nicht die Handy-Version.
 
@@ -86,7 +102,7 @@ Buildausgabe: `app/build/outputs/apk/mobile/debug/app-mobile-debug.apk` und `app
 ## Grenzen vor stabiler 1.0
 
 - Noch keine auf realen Geräten mit echten Zugangsdaten dokumentierten End-to-End-Tests für Caddy-CA, HLS-Spuren, Fernseh-PiP, 4K/HEVC, Berechtigungsänderungen, Medien-Transcoding und Langzeit-Hintergrundwiedergabe.
-- Transcodierte MP4-Live-Ausgaben erlauben keinen normalen Byte-Range-Seek; die Startzeit erzeugt stattdessen einen neuen Stream. Offline-Musikbibliothek, Chromecast/Google Cast, native Chromecast-Fernbedienung und geräteübergreifende Synchronisation sind nicht Teil der aktuellen Tromuwelle-API.
+- Transcodierte MP4-Live-Ausgaben erlauben keinen normalen Byte-Range-Seek; die Startzeit erzeugt stattdessen einen neuen Stream. Eine umfangreiche Offline-Musikbibliothek und vollständige geräteübergreifende Synchronisation fehlen weiterhin. Cast für eigene Musik, Podcasts, Radio und Video ist über die **neuen** serverseitigen Ticket-Endpunkte möglich; Live-TV/HLS und externe Subsonic-Server sind nicht zum Cast freigegeben. Ein Cast-Empfänger muss den Server über kompatibles HTTPS oder den ausdrücklich aktivierten LAN-Proxy erreichen können.
 - Externe EPG/XMLTV und Subsonic-/Jellyfin-Kompatibilität bleiben Serverfunktionen. Die App nutzt die eigene API statt einen vollständigen Subsonic-Server zu emulieren. Anlegen neuer Host-Mounts und Encoder-Gerätetreiberkonfiguration bleiben bewusst serverseitige Administrationsaufgaben.
 
 ## Umfang des Abgleichs

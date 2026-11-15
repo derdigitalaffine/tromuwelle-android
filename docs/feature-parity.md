@@ -115,3 +115,18 @@ Die Zeilen mit „Ja“ bezeichnen **implementierte Funktionswege**, nicht eine 
 | Android Automotive OS | Video nur bei Fahrzeugstillstand | Plattformbeschränkungen bleiben bestehen |
 
 Offen: echte Gerätetests, Podcast-E2E mit einem realen Feed, SNI/Caddy-TLS mit Realgerät und dauerhaft gültige Release-Signatur. Die Tabelle beschreibt implementierte Pfade, keine Hardware-Zertifizierung.
+
+## Streaming-UI, Thumbnail, Audio und Cast v0.5.0-beta.1
+
+| Funktion | Backend/Android-Integration | Einschränkung |
+|---|---|---|
+| Film-Poster → Videostandbild | /api/media/artwork, /api/media/thumbnail, Coil-HTTPS-Transport | HTTP 503 bei laufender Servergenerierung: begrenzter Retry |
+| Medienordner-Vorschaubild | /api/media/folder-thumbnail für autorisierte Roots | Ordner ohne indizierte Filme zeigen Fallback |
+| Startseite: Hero/Weiter ansehen/Podcasts | Echte Katalogdaten, lokale Wiedergabeposition, /api/podcasts/episodes | Private 18+-Medien ausgeschlossen |
+| Mini-Player mit Cover & Fortschritt | AuthenticatedArtwork, Media3-Player | Kein Remote-Cast-State im Mini-Player |
+| Interner Ausgang/Bluetooth/USB/HDMI | AudioManager GET_DEVICES_OUTPUTS, ExoPlayer setPreferredAudioDevice | Routenpräferenz ist keine Garantie; Bluetooth-Berechtigung Android 12+ |
+| Cast-Geräteauswahl | Google Cast Framework 22.3.1, Default Media Receiver | Play-Dienste und erreichbarer Receiver erforderlich |
+| Cast eigene Musik/Podcasts/Radio/Videos | POST /api/cast/ticket, GET /api/cast/stream/{token}, 4h-Ticket, kompatibles MP3/MP4 | Live-TV/HLS und externe OpenSubsonic ausgenommen |
+| Cast mit privater Caddy-CA | Optionales Backend-Profil cast-lan, Port 8098, zeitlich begrenzter Einzeltitel-Link | Bewusst unsichere LAN-Übertragung; standardmäßig deaktiviert |
+| Podcast-Admin-Cacheverwaltung | /api/podcasts/status, /api/podcasts/settings: days/MB/delete_played | Administratorrecht, separates podcast_cache-Docker-Volume |
+| Gerätetest Cast/Audio/Thumbnail | GitHub CI baut, unit-testet und lintet Code | Echte Geräte und Server nicht im CI verfügbar |
