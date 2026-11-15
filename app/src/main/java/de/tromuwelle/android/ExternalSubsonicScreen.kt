@@ -1,0 +1,259 @@
+package de.tromuwelle.android
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+
+/**
+ * Independently connected external Subsonic music libraries. All network requests and
+ * credential changes run off the main thread. No credentials or stream URLs shown in UI.
+ */
+@Composable
+fun ExternalSubsonicScreen(onClose: () -> Unit,
+                           onPlay: (SubsonicSource, List<JSONObject>, Int) -> Unit) {
+    val context = LocalContext.current
+    val store = remember(context) { SubsonicSourceStore(context) }
+    val scope = rememberCoroutineScope()
+    var sources by remember { mutableStateOf(store.all()) }
+    var selected by remember { mutableStateOf<SubsonicSource?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
+    var editingId by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var section by remember { mutableStateOf("artists") }
+    var artistId by remember { mutableStateOf("") }
+    var albumId by remember { mutableStateOf("") }
+    var search by remember { mutableStateOf("") }
+    var offset by remember { mutableIntStateOf(0) }
+    var rows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf<SubsonicSource?>(null) }
+
+    fun load(more: Boolean = false) {
+        val server = selected ?: return
+        val client = SubsonicClient(server)
+        val currentSection = section
+        val currentSearch = search
+        val currentArtist = artistId
+        val currentAlbum = albumId
+        val start = if (more) offset else 0
+        scope.launch {
+            busy = true
+            try {
+                val data = withContext(Dispatchers.IO) {
+                    when (currentSection) {
+                        "artists" -> client.artists().filter { it.optString("name")
+                            .contains(currentSearch, ignoreCase = true) }
+                        "albums" -> client.albums(currentArtist, start).filter {
+                            it.optString("name").contains(currentSearch, ignoreCase = true)
+                        }
+                        "playlists" -> client.playlists().filter { it.optString("name")
+                            .contains(currentSearch, ignoreCase = true) }
+                        else -> client.songs(currentSearch, currentAlbum, start)
+                    }
+                }
+                rows = if (more) rows + data else data
+                offset = if (more) start + data.size else data.size
+                error = ""
+            } catch (e: Exception) { error = e.message ?: "Subsonic-Bibliothek nicht erreichbar." }
+            finally { busy = false }
+        }
+    }
+    fun open(source: SubsonicSource) {
+        selected = source
+        section = "artists"; artistId = ""; albumId = ""; search = ""
+        offset = 0; rows = emptyList()
+        load()
+    }
+    fun edit(source: SubsonicSource? = null) {
+        editingId = source?.id.orEmpty()
+        name = source?.name.orEmpty()
+        address = source?.address.orEmpty()
+        username = source?.user.orEmpty()
+        password = ""
+        showEditor = true
+        error = ""
+    }
+    Column(Modifier.fillMaxSize().padding(14.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(selected?.name ?: "Musikserver", style = MaterialTheme.typography.headlineSmall)
+            TextButton(onClick = {
+                if (selected != null) { selected = null; rows = emptyList() }
+                else onClose()
+            }) { Text(if (selected != null) "Serverauswahl" else "Schließen") }
+        }
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+        if (selected == null) {
+            Text("Externe Navidrome-, Airsonic-, Gonic- und OpenSubsonic-Server",
+                style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = { edit() }) { Text("HTTPS-Musikserver hinzufügen") }
+            LazyColumn {
+                items(sources, key = { it.id }) { source ->
+                    ListItem(
+                        headlineContent = { Text(source.name) },
+                        supportingContent = { Text(source.address + " · " + source.user) },
+                        modifier = Modifier.clickable { open(source) },
+                        trailingContent = {
+                            Row {
+                                TextButton(onClick = { edit(source) }) { Text("Ändern") }
+                                TextButton(onClick = { confirmation = source }) { Text("Löschen") }
+                            }
+                        }
+                    )
+                    HorizontalDivider()
+                }
+            }
+        } else {
+            Row(Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("artists" to "Interpreten", "albums" to "Alben",
+                    "songs" to "Titel", "playlists" to "Playlists").forEach { (id, label) ->
+                    FilterChip(selected = section == id, onClick = {
+                        section = id; artistId = ""; albumId = ""; search = ""
+                        offset = 0; load()
+                    }, label = { Text(label) })
+                }
+            }
+            if (artistId.isNotBlank() || albumId.isNotBlank()) {
+                TextButton(onClick = {
+                    if (albumId.isNotBlank()) { albumId = ""; section = "albums" }
+                    else { artistId = ""; section = "artists" }
+                    load()
+                }) { Text("‹ Zurück") }
+            }
+            Row {
+                OutlinedTextField(search, { search = it }, singleLine = true,
+                    modifier = Modifier.weight(1f), label = { Text("Suchen") })
+                TextButton(onClick = { load() }) { Text("Suchen") }
+            }
+            if (rows.isEmpty() && !busy && error.isBlank())
+                Text("Keine Einträge gefunden.", Modifier.padding(16.dp))
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                items(rows.size) { index ->
+                    val entry = rows[index]
+                    val label = entry.optString("title")
+                        .ifBlank { entry.optString("name", "Unbenannt") }
+                    val description = listOf(entry.optString("artist"),
+                        entry.optString("album"), entry.optString("year"))
+                        .filter { it.isNotBlank() && it != "null" }.joinToString(" · ")
+                    Row(Modifier.fillMaxWidth().clickable {
+                        when (section) {
+                            "artists" -> { artistId = entry.optString("id"); section = "albums"; search = ""; load() }
+                            "albums" -> { albumId = entry.optString("id"); section = "songs"; search = ""; load() }
+                            "playlists" -> {
+                                val server = selected ?: return@clickable
+                                scope.launch {
+                                    busy = true
+                                    try {
+                                        val songs = withContext(Dispatchers.IO) {
+                                            val playlist = SubsonicClient(server).playlist(entry.optString("id"))
+                                            val items = playlist.optJSONArray("entry") ?: org.json.JSONArray()
+                                            (0 until items.length()).mapNotNull { items.optJSONObject(it) }
+                                        }
+                                        onPlay(server, songs, 0)
+                                    } catch (e: Exception) { error = e.message ?: "Playlist fehlgeschlagen." }
+                                    finally { busy = false }
+                                }
+                            }
+                            else -> {
+                                val server = selected ?: return@clickable
+                                onPlay(server, rows, index)
+                            }
+                        }
+                    }.padding(vertical = 12.dp, horizontal = 8.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(label, style = MaterialTheme.typography.titleMedium)
+                            if (description.isNotBlank())
+                                Text(description, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (section == "songs" || section == "playlists") Text("▶")
+                        else Text("›")
+                    }
+                    HorizontalDivider()
+                }
+                if ((section == "albums" && artistId.isBlank()) ||
+                    (section == "songs" && albumId.isBlank())) {
+                    item {
+                        TextButton(enabled = !busy && rows.isNotEmpty(),
+                            onClick = { load(true) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Weitere laden")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (showEditor) AlertDialog(onDismissRequest = { showEditor = false },
+        title = { Text(if(editingId.isBlank()) "Musikserver hinzufügen" else "Musikserver bearbeiten") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(address, { address = it },
+                    label = { Text("HTTPS-URL (auch mit /subsonic möglich)") },
+                    modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(username, { username = it }, label = { Text("Benutzername") },
+                    modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(password, { password = it }, label = {
+                    Text(if (editingId.isBlank()) "Passwort" else "Neues Passwort (leer = unverändert)")
+                }, visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth())
+                Text("Zugangsdaten sind nur gerätegebunden verschlüsselt gespeichert. HTTPS ist Pflicht.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            Button(enabled = !busy && name.isNotBlank() && address.isNotBlank() &&
+                username.isNotBlank(), onClick = {
+                val existing = sources.firstOrNull { it.id == editingId }
+                val p = password.ifBlank { existing?.password.orEmpty() }
+                val source = SubsonicSource(existing?.id ?: java.util.UUID.randomUUID().toString(),
+                    name.trim(), address.trim(), username.trim(), p)
+                busy = true
+                scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            SubsonicClient(source).ping()
+                            store.save(source)
+                        }
+                        sources = store.all()
+                        selected = if (selected?.id == source.id) source else selected
+                        password = ""; error = ""; showEditor = false
+                    } catch (e: Exception) {
+                        error = e.message ?: "Verbindung fehlgeschlagen."
+                    } finally { busy = false }
+                }
+            }) { Text("Verbindung testen & speichern") }
+        },
+        dismissButton = { TextButton(onClick = { showEditor = false; password = "" }) {
+            Text("Abbrechen")
+        } })
+    if (confirmation != null) AlertDialog(onDismissRequest = { confirmation = null },
+        title = { Text("Musikserver entfernen?") },
+        text = { Text("Gespeicherte Zugangsdaten für diesen Server werden gelöscht.") },
+        confirmButton = { Button(onClick = {
+            val target = confirmation ?: return@Button
+            store.remove(target.id)
+            sources = store.all()
+            if (selected?.id == target.id) selected = null
+            confirmation = null
+        }) { Text("Löschen") } },
+        dismissButton = { TextButton(onClick = { confirmation = null }) { Text("Abbrechen") } })
+}
