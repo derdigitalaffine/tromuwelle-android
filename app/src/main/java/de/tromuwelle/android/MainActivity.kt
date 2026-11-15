@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
             }, ContextCompat.getMainExecutor(this))
         }
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+            TromuStreamingTheme {
                 TromuwelleScreen((application as TromuwelleApplication).session, controller,
                     onPip = {
                         if (BuildConfig.FLAVOR == "mobile" && android.os.Build.VERSION.SDK_INT >= 26) {
@@ -168,6 +168,12 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     val recent = remember { mutableStateListOf<String>() }
     var connecting by remember { mutableStateOf(false) }
     var section by remember { mutableStateOf(LibrarySection.TV) }
+    var streamTab by remember { mutableStateOf(StreamTab.HOME) }
+    var profileOpen by remember { mutableStateOf(false) }
+    var audioSheetOpen by remember { mutableStateOf(false) }
+    var globalSearchOpen by remember { mutableStateOf(false) }
+    var advancedFiltersOpen by remember { mutableStateOf(false) }
+    var videoSelection by remember { mutableStateOf<LibraryEntry?>(null) }
     var browse by remember { mutableStateOf(MusicBrowse.TRACKS) }
     var playlistsPage by remember { mutableStateOf(false) }
     var lyricsEntry by remember { mutableStateOf<LibraryEntry?>(null) }
@@ -328,6 +334,14 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
 
     fun switchSection(next: LibrarySection) {
         section = next
+        streamTab = when (next) {
+            LibrarySection.MUSIC -> StreamTab.MUSIC
+            LibrarySection.RADIO -> StreamTab.RADIO
+            LibrarySection.TV -> StreamTab.LIVE
+            LibrarySection.MEDIA, LibrarySection.PRIVATE -> StreamTab.VIDEO
+        }
+        advancedFiltersOpen = false
+        onlyFavorites = false
         search = ""
         artist = ""; artistName = ""; album = ""; albumName = ""
         browse = MusicBrowse.TRACKS
@@ -387,6 +401,24 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             playbackError = ""
         } catch (exception: Exception) {
             playbackError = exception.message ?: "Wiedergabe konnte nicht gestartet werden."
+        }
+    }
+
+    fun openEntry(entry: LibraryEntry) {
+        when (entry.kind) {
+            EntryKind.FOLDER -> { folder = entry.path; search = ""; refresh() }
+            EntryKind.ARTIST -> {
+                artist = entry.id; artistName = entry.title; album = ""
+                browse = MusicBrowse.ALBUMS; search = ""; refresh()
+            }
+            EntryKind.ALBUM -> {
+                album = entry.id; albumName = entry.title
+                browse = MusicBrowse.TRACKS; search = ""; refresh()
+            }
+            EntryKind.FILE -> {
+                if (entry.isVideo()) videoSelection = entry else playItem(entry)
+            }
+            else -> playItem(entry)
         }
     }
 
@@ -470,14 +502,14 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         return
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Surface(color = MaterialTheme.colorScheme.primaryContainer) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)) {
-                Text("Tromuwelle", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("Deine Medien. Dein Server.", style = MaterialTheme.typography.bodySmall)
+    if (!connected) {
+        Column(Modifier.fillMaxSize()) {
+            Surface(color = MaterialTheme.colorScheme.primaryContainer) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)) {
+                    Text("Tromuwelle", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("Deine Medien. Dein Server.", style = MaterialTheme.typography.bodySmall)
+                }
             }
-        }
-        if (!connected) {
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Mit dem Server verbinden", style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(server, { server = it }, modifier = Modifier.fillMaxWidth(),
@@ -540,9 +572,102 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     style = MaterialTheme.typography.bodySmall)
                 if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
             }
-        } else {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        }
+    } else {
+        StreamScaffold(
+            tab = streamTab,
+            onTab = { target ->
+                if (target == StreamTab.HOME) {
+                    streamTab = StreamTab.HOME
+                } else {
+                    val next = when (target) {
+                        StreamTab.MUSIC -> LibrarySection.MUSIC
+                        StreamTab.VIDEO -> LibrarySection.MEDIA
+                        StreamTab.RADIO -> LibrarySection.RADIO
+                        StreamTab.LIVE -> LibrarySection.TV
+                        StreamTab.HOME -> LibrarySection.TV
+                    }
+                    switchSection(next)
+                }
+            },
+            onSearch = { globalSearchOpen = true },
+            onProfile = { profileOpen = true },
+            current = current,
+            player = player,
+            isPlaying = isPlaying,
+            onPlayer = { audioSheetOpen = true },
+            onVideo = { videoDetail = true },
+            onClosePlayer = {
+                player?.stop(); player?.clearMediaItems()
+                current = null; playbackError = ""; audioSheetOpen = false
+            }
+        ) { innerPadding ->
+            if (streamTab == StreamTab.HOME) {
+                Box(Modifier.fillMaxSize().padding(innerPadding)) {
+                    StreamHome(session, recent.toList(), favorites.toSet(), current,
+                        onOpen = { openEntry(it) },
+                        onSection = { switchSection(it) },
+                        onFavorites = { switchSection(LibrarySection.MUSIC); onlyFavorites = true })
+                }
+            } else Column(Modifier.fillMaxSize().padding(innerPadding)) {
+                StreamSectionTitle(
+                    when (section) {
+                        LibrarySection.TV -> "Live-TV"
+                        LibrarySection.RADIO -> "Internetradio"
+                        LibrarySection.MUSIC -> if (album.isNotBlank()) albumName
+                            else if (artist.isNotBlank()) artistName else "Musik"
+                        LibrarySection.MEDIA -> "Mediathek"
+                        LibrarySection.PRIVATE -> "Private Bibliothek"
+                    },
+                    when (section) {
+                        LibrarySection.TV -> "Deine Fernsehsender"
+                        LibrarySection.RADIO -> "Entdecke Sender und Genres"
+                        LibrarySection.MUSIC -> "Deine Musik, Alben und Playlists"
+                        LibrarySection.MEDIA -> "Filme, Videos und Ordner"
+                        LibrarySection.PRIVATE -> "Nur freigegebene private Medien"
+                    },
+                    streamTab.icon,
+                    onRefresh = { refresh() }
+                )
+                if (section == LibrarySection.MEDIA || section == LibrarySection.PRIVATE) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(onClick = {
+                            switchSection(if (section == LibrarySection.PRIVATE)
+                                LibrarySection.MEDIA else LibrarySection.PRIVATE)
+                        }, label = { Text(if (section == LibrarySection.PRIVATE)
+                            "Reguläre Mediathek" else "Private 18+-Bibliothek") })
+                    }
+                }
+                if (section == LibrarySection.MUSIC && session.account.managed) {
+                    TextButton(onClick = { playlistsPage = true },
+                        modifier = Modifier.padding(start = 8.dp)) {
+                        Text("Meine Playlists")
+                    }
+                }
+                if (playbackError.isNotBlank()) {
+                    Text(playbackError, Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.error)
+                }
+                if (downloadMessage.isNotBlank()) {
+                    Text(downloadMessage, Modifier.padding(horizontal = 16.dp))
+                    TextButton(onClick = { downloadMessage = "" }) { Text("Schließen") }
+                }
+                if (current?.kind == EntryKind.FILE && current?.audio == false) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !compatible, onClick = { compatible = false },
+                            label = { Text("Original") })
+                        FilterChip(selected = compatible, onClick = { compatible = true },
+                            label = { Text("Kompatibel") })
+                        if (compatible) listOf(480, 720, 1080, 2160).forEach { h ->
+                            FilterChip(selected = quality == h, onClick = { quality = h },
+                                label = { Text("${h}p") })
+                        }
+                        TextButton(onClick = { current?.let { playItem(it) } }) { Text("Neu starten") }
+                    }
+                }
+
                 LibrarySection.entries.filter { it != LibrarySection.PRIVATE }.forEach { item ->
                     FilterChip(selected = item == section, onClick = { switchSection(item) },
                         label = { Text(item.label) })
@@ -561,73 +686,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 }) { Text("Abmelden") }
             }
 
-            if (current != null || player?.currentMediaItem != null) {
-                Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val now = player?.mediaMetadata?.title?.toString().orEmpty()
-                            .ifBlank { current?.title.orEmpty() }
-                        Text(now, style = MaterialTheme.typography.titleMedium, maxLines = 2)
-                        if (current?.isVideo() == true) {
-                            Row(Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = { videoDetail = true }) { Text("▶ Video öffnen") }
-                                TextButton(onClick = { fullscreen = true }) { Text("Vollbild") }
-                            }
-                        } else if (player != null) {
-                            NativePlayerControls(player,
-                                isLive = false, isAudio = true, onPip = onPip)
-                        }
-                        if (current?.kind == EntryKind.TRACK && current?.id?.startsWith("ext:") != true) {
-                            TextButton(onClick = { lyricsEntry = current }) { Text("Liedtext (Lyrics)") }
-                        }
-                        if (current?.kind == EntryKind.FILE && current?.audio == false) {
-                            Row(Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(selected = !compatible, onClick = { compatible = false },
-                                    label = { Text("Original") })
-                                FilterChip(selected = compatible, onClick = { compatible = true },
-                                    label = { Text("Kompatibel") })
-                                if (compatible) listOf(480, 720, 1080, 2160).forEach { h ->
-                                    FilterChip(selected = quality == h, onClick = { quality = h },
-                                        label = { Text(h.toString() + "p") })
-                                }
-                            }
-                            if (compatible) {
-                                OutlinedTextField(compatStart, { compatStart = it.filter { c -> c.isDigit() } },
-                                    label = { Text("Start bei Sekunde") }, singleLine = true,
-                                    modifier = Modifier.fillMaxWidth())
-                            }
-                            OutlinedButton(onClick = {
-                                current?.let { playItem(it, compatStart.toLongOrNull() ?: 0L) }
-                            }) { Text("Wiedergabe mit Auswahl neu starten") }
-                        }
-                        if (playbackError.isNotBlank()) {
-                            Text(playbackError, color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall)
-                            if (current?.kind == EntryKind.FILE && !compatible) {
-                                Button(onClick = {
-                                    compatible = true
-                                    current?.let { playItem(it) }
-                                }) { Text("Kompatible Wiedergabe versuchen") }
-                            }
-                        }
-                        TextButton(onClick = {
-                            player?.stop(); player?.clearMediaItems()
-                            current = null; playbackError = ""
-                        }) { Text("Wiedergabe schließen") }
-                    }
-                }
-            }
-            if (downloadMessage.isNotBlank()) {
-                Text(downloadMessage, modifier = Modifier.padding(12.dp),
-                    style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { downloadMessage = "" }) { Text("Hinweis schließen") }
-            }
             if (section == LibrarySection.MUSIC) {
-                if (session.account.managed) {
-                    TextButton(onClick = { playlistsPage = true }) { Text("Meine Musik-Playlists") }
-                }
-                musicQuality?.let { qualitySummary ->
+                 musicQuality?.let { qualitySummary ->
                     Text("${qualitySummary.optInt("albums")} Alben · " +
                         "${qualitySummary.optInt("artists")} Künstler · " +
                         "${qualitySummary.optInt("lossless")} Lossless",
@@ -649,6 +709,15 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     }) { Text("‹ Zurück" + listOf(artistName, albumName).filter { it.isNotBlank() }.joinToString(" / ", " · ")) }
                 }
             }
+            OutlinedButton(onClick = { advancedFiltersOpen = !advancedFiltersOpen },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp)) {
+                Icon(if (advancedFiltersOpen) androidx.compose.material.icons.Icons.Rounded.ExpandLess
+                    else androidx.compose.material.icons.Icons.Rounded.Tune,
+                    contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (advancedFiltersOpen) "Weniger Filter anzeigen" else "Filter & Sortierung")
+            }
+            if (advancedFiltersOpen) {
             if (section == LibrarySection.MUSIC && browse == MusicBrowse.TRACKS) {
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -675,17 +744,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     }, label = { Text("Nur Lossless") })
                 }
             }
-            if (section == LibrarySection.MEDIA) {
-                TextButton(onClick = { switchSection(LibrarySection.PRIVATE) }) {
-                    Text("Private 18+-Filmbibliothek öffnen")
-                }
-            }
             if (section == LibrarySection.PRIVATE) {
-                TextButton(onClick = { switchSection(LibrarySection.MEDIA) }) {
-                    Text("‹ Reguläre Mediathek")
-                }
-                Text("Private 18+-Filme · nur freigegebene Quellen",
-                    style = MaterialTheme.typography.titleMedium)
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = adultTag.isBlank(), onClick = { adultTag = ""; refresh() },
@@ -698,6 +757,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     }
                 }
             }
+            } // optional advanced filters
             if (section == LibrarySection.MEDIA && folder.isNotBlank() && search.isBlank()) {
                 TextButton(onClick = { folder = folder.substringBeforeLast('/', ""); refresh() }) {
                     Text("‹ Ordner zurück · " + folder)
@@ -821,61 +881,106 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     section == LibrarySection.RADIO && onlyRecent -> list.sortedBy { recent.indexOf(it.id) }
                     else -> list
                 } }
-            if (shown.isEmpty() && !loading && error.isBlank()) {
-                Text("Keine Einträge gefunden.", Modifier.padding(20.dp))
-            }
-            LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-                items(shown, key = { it.kind.name + ":" + it.id }) { entry ->
-                    Row(Modifier.fillMaxWidth().clickable {
-                        when(entry.kind) {
-                            EntryKind.FOLDER -> { folder = entry.path; search = ""; refresh() }
-                            EntryKind.ARTIST -> {
-                                artist = entry.id; artistName = entry.title; album = ""
-                                browse = MusicBrowse.ALBUMS; search = ""; refresh()
-                            }
-                            EntryKind.ALBUM -> {
-                                album = entry.id; albumName = entry.title; browse = MusicBrowse.TRACKS
-                                search = ""; refresh()
-                            }
-                            else -> playItem(entry)
-                        }
-                    }.padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        AuthenticatedArtwork(session, entry, Modifier.size(48.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(entry.title, style = MaterialTheme.typography.titleSmall)
-                            if (entry.description.isNotBlank())
-                                Text(entry.description, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                        }
-                        if(entry.playable()) {
-                            TextButton(onClick = { toggleFavorite(entry) }) {
-                                Text(if ((entry.kind.name + ":" + entry.id) in favorites) "★" else "☆")
-                            }
-                            if (entry.kind == EntryKind.FILE || entry.kind == EntryKind.TRACK) {
-                                TextButton(onClick = {
-                                    downloadEntry = entry
-                                    savePicker.launch(entry.path.substringAfterLast('/').ifBlank { entry.title })
-                                }) { Text("↓") }
-                            }
-                            if (entry.kind == EntryKind.FILE && !entry.audio) {
-                                TextButton(onClick = { infoEntry = entry }) { Text("Info") }
-                            }
-                        }
-                    }
-                    HorizontalDivider()
-                }
-                if (!onlyFavorites && !loading && entries.size < total &&
+            StreamLibraryListing(
+                session = session,
+                entries = shown,
+                section = section,
+                loading = loading,
+                total = total,
+                more = !onlyFavorites &&
                     (section == LibrarySection.MUSIC || section == LibrarySection.PRIVATE ||
-                        (section == LibrarySection.MEDIA && (search.isNotBlank() || mediaMinHeight > 0 || mediaSort != "name")))) {
-                    item {
-                        TextButton(onClick = { refresh(append = true) }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Weitere laden (${entries.size} / $total)")
-                        }
-                    }
+                        (section == LibrarySection.MEDIA && (search.isNotBlank() ||
+                            mediaMinHeight > 0 || mediaSort != "name"))),
+                onOpen = { openEntry(it) },
+                onFavorite = { toggleFavorite(it) },
+                isFavorite = { (it.kind.name + ":" + it.id) in favorites },
+                onDownload = {
+                    downloadEntry = it
+                    savePicker.launch(it.path.substringAfterLast('/').ifBlank { it.title })
+                },
+                onInfo = { infoEntry = it },
+                onLoadMore = { refresh(append = true) }
+            )
+            } // end streaming content Column
+        } // end StreamScaffold
+    } // end connected screen
+    if (profileOpen && connected) {
+        ModalBottomSheet(onDismissRequest = { profileOpen = false }) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Dein Tromuwelle", style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold)
+                Text(session.account.username.ifBlank { "Gemeinsamer Passwortzugang" },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { profileOpen = false; accountPage = true }) {
+                    Text("Konto & Sicherheit")
                 }
+                TextButton(onClick = { profileOpen = false; externalPage = true }) {
+                    Text("Weitere Musikserver · OpenSubsonic")
+                }
+                if (session.account.managed) TextButton(onClick = {
+                    profileOpen = false; playlistsPage = true
+                }) { Text("Meine Playlists") }
+                if (session.account.isAdmin) TextButton(onClick = {
+                    profileOpen = false; managementPage = true
+                }) { Text("Serververwaltung") }
+                TextButton(onClick = {
+                    profileOpen = false; switchSection(LibrarySection.PRIVATE)
+                }) { Text("Private 18+-Bibliothek") }
+                HorizontalDivider()
+                TextButton(onClick = {
+                    profileOpen = false
+                    player?.stop(); player?.clearMediaItems(); current = null
+                    scope.launch {
+                        withContext(Dispatchers.IO) { session.logout() }
+                        connected = false; streamTab = StreamTab.HOME
+                    }
+                }) { Text("Abmelden") }
+                Spacer(Modifier.height(8.dp))
             }
         }
+    }
+    if (audioSheetOpen && player != null) {
+        ModalBottomSheet(onDismissRequest = { audioSheetOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                val playingTitle = player.mediaMetadata.title?.toString()
+                    .orEmpty().ifBlank { current?.title.orEmpty() }
+                Text("JETZT LÄUFT", color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelMedium)
+                Text(playingTitle, style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold)
+                Text(current?.description.orEmpty(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                current?.let { item ->
+                    AuthenticatedArtwork(session, item, Modifier.fillMaxWidth()
+                        .height(250.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)))
+                }
+                NativePlayerControls(player, isLive = current?.kind == EntryKind.RADIO,
+                    isAudio = true, onPip = onPip)
+                if (current?.kind == EntryKind.TRACK &&
+                    current?.id?.startsWith("ext:") != true) {
+                    Button(onClick = { lyricsEntry = current; audioSheetOpen = false },
+                        modifier = Modifier.fillMaxWidth()) { Text("Liedtext anzeigen") }
+                }
+                Spacer(Modifier.height(18.dp))
+            }
+        }
+    }
+    videoSelection?.let { entry ->
+        StreamVideoDetails(session, entry,
+            onDismiss = { videoSelection = null },
+            onPlay = { videoSelection = null; playItem(entry) },
+            onInfo = { videoSelection = null; infoEntry = entry },
+            onDownload = {
+                videoSelection = null
+                downloadEntry = entry
+                savePicker.launch(entry.path.substringAfterLast('/').ifBlank { entry.title })
+            },
+            onFavorite = { toggleFavorite(entry) },
+            favorite = (entry.kind.name + ":" + entry.id) in favorites)
     }
     lyricsEntry?.let { entry ->
         MusicLyricsDialog(session, entry, player = player, onDismiss = { lyricsEntry = null })
