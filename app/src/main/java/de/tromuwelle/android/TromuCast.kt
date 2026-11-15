@@ -213,11 +213,42 @@ fun CastOutputSheet(
                 Spacer(Modifier.width(8.dp))
                 Text(if (busy) "Cast-Link wird vorbereitet …" else "Jetzt auf Cast abspielen")
             }
-            if (active) OutlinedButton(onClick = {
-                cast?.sessionManager?.endCurrentSession(true)
-                connectedTick++
-            }, modifier = Modifier.fillMaxWidth()) {
-                Text("Cast-Verbindung beenden")
+            if (active) {
+                Text("Cast-Fernbedienung",
+                    style = MaterialTheme.typography.titleMedium)
+                Row(Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        cast?.sessionManager?.currentCastSession
+                            ?.remoteMediaClient?.play()
+                    }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.PlayArrow, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Play")
+                    }
+                    OutlinedButton(onClick = {
+                        cast?.sessionManager?.currentCastSession
+                            ?.remoteMediaClient?.pause()
+                    }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.Pause, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Pause")
+                    }
+                    OutlinedButton(onClick = {
+                        cast?.sessionManager?.currentCastSession
+                            ?.remoteMediaClient?.stop()
+                    }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.Stop, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Stop")
+                    }
+                }
+                TextButton(onClick = {
+                    cast?.sessionManager?.endCurrentSession(true)
+                    connectedTick++
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Cast-Verbindung trennen")
+                }
             }
             if (source == null) {
                 Text(if (entry?.kind == EntryKind.TV) "Live-TV benötigt einen Cast-kompatiblen " +
