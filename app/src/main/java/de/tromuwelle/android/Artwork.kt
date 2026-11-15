@@ -91,7 +91,13 @@ fun AuthenticatedArtwork(session: TromuwelleSession, entry: LibraryEntry,
     // Retry with bounded backoff; do not hammer two FFmpeg render slots.
     LaunchedEffect(failureSignal, candidate, candidates) {
         if (failureSignal == 0) return@LaunchedEffect
-        if (retries < 3 && path.contains("/api/media/")) {
+        // Missing poster artwork returns HTTP 404 and must immediately fall
+        // through to an FFmpeg thumbnail; it isn't a temporary render failure.
+        if (path.contains("/api/media/artwork?")) {
+            candidate++
+            retries = 0
+            failureSignal = 0
+        } else if (retries < 3 && path.contains("/api/media/")) {
             delay(750L * (1 shl retries))
             retries++
         } else {
