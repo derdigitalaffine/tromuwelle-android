@@ -676,6 +676,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 Box(Modifier.fillMaxSize().padding(innerPadding)) {
                     StreamHome(session, recent.toList(), favorites.toSet(), current,
                         onOpen = { item ->
+                            if (item.id.startsWith("podcast:") || item.id.startsWith("ext:")) {
+                                audioSheetOpen = true
+                            } else {
                             val target = when (item.kind) {
                                 EntryKind.TRACK, EntryKind.ARTIST, EntryKind.ALBUM -> LibrarySection.MUSIC
                                 EntryKind.RADIO -> LibrarySection.RADIO
@@ -684,6 +687,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             }
                             switchSection(target)
                             openEntry(item)
+                            }
                         },
                         onSection = { switchSection(it) },
                         onFavorites = { switchSection(LibrarySection.MUSIC); onlyFavorites = true },
