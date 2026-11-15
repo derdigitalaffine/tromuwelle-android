@@ -1,6 +1,8 @@
 package de.tromuwelle.android
 
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.media3.common.Player
@@ -14,9 +16,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -55,6 +64,10 @@ fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
     var offset by remember { mutableIntStateOf(0) }
     var rows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
+    var pageMayHaveMore by remember { mutableStateOf(false) }
+    var requestEpoch by remember { mutableIntStateOf(0) }
+    var activeLoad by remember { mutableStateOf<Job?>(null) }
+    var lastRequestedSearch by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf<SubsonicSource?>(null) }
     val downloadPicker = rememberLauncherForActivityResult(
@@ -76,44 +89,85 @@ fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
 
     fun load(more: Boolean = false) {
         val server = selected ?: return
-        val client = SubsonicClient(server)
+        // Never append a second page while a request is in progress or after
+        // the server returned fewer items than its nominal page size.
+        if (more && (busy || !pageMayHaveMore)) return
+        val requestId = ++requestEpoch
+        activeLoad?.cancel()
         val currentSection = section
-        val currentSearch = search
+        val currentSearch = search.trim()
         val currentArtist = artistId
         val currentAlbum = albumId
+        val currentPlaylist = playlistId
         val start = if (more) offset else 0
-        scope.launch {
+        lastRequestedSearch = search
+        if (!more) {
+            rows = emptyList()
+            offset = 0
+            pageMayHaveMore = false
+        }
+        activeLoad = scope.launch {
             busy = true
             try {
-                val data = withContext(Dispatchers.IO) {
-                    when (currentSection) {
-                        "artists" -> client.artists().filter { it.optString("name")
-                            .contains(currentSearch, ignoreCase = true) }
-                        "albums" -> client.albums(currentArtist, start).filter {
-                            it.optString("name").contains(currentSearch, ignoreCase = true)
+                // The network reply is immutable request-local data: no Compose
+                // state may be written on the IO worker.
+                val response = withContext(Dispatchers.IO) {
+                    val client = SubsonicClient(server)
+                    if (currentSection == "playlistTracks") {
+                        val playlist = client.playlist(currentPlaylist)
+                        val tracks = playlist.optJSONArray("entry") ?: org.json.JSONArray()
+                        (0 until tracks.length()).mapNotNull { tracks.optJSONObject(it) } to
+                            playlist.optString("name")
+                    } else {
+                        val page = when (currentSection) {
+                            "artists" -> client.artists()
+                            "albums" -> client.albums(currentArtist, start)
+                            "playlists" -> client.playlists()
+                            else -> client.songs(currentSearch, currentAlbum, start)
                         }
-                        "playlistTracks" -> {
-                            val playlist = client.playlist(playlistId)
-                            playlistName = playlist.optString("name")
-                            val list = playlist.optJSONArray("entry") ?: org.json.JSONArray()
-                            (0 until list.length()).mapNotNull { list.optJSONObject(it) }
-                        }
-                        "playlists" -> client.playlists().filter { it.optString("name")
-                            .contains(currentSearch, ignoreCase = true) }
-                        else -> client.songs(currentSearch, currentAlbum, start)
+                        page to ""
                     }
                 }
-                rows = if (more) rows + data else data
-                offset = if (more) start + data.size else data.size
+                if (requestId != requestEpoch || selected?.id != server.id) return@launch
+                val unfiltered = response.first
+                val filtered = when (currentSection) {
+                    "artists", "albums", "playlists" -> unfiltered.filter {
+                        it.optString("name").contains(currentSearch, ignoreCase = true)
+                    }
+                    else -> unfiltered
+                }
+                rows = if (more) {
+                    // Different pages may overlap on servers with a changing
+                    // catalogue; preserve the first copy and stable order.
+                    (rows + filtered).distinctBy { it.optString("id") }
+                } else filtered
+                offset = start + unfiltered.size
+                pageMayHaveMore = canPageSubsonic(currentSection, currentArtist,
+                    currentAlbum, currentSearch) && unfiltered.size >= SUBSONIC_PAGE_SIZE
+                if (currentSection == "playlistTracks") playlistName = response.second
                 error = ""
-            } catch (e: Exception) { error = e.message ?: "Subsonic-Bibliothek nicht erreichbar." }
-            finally { busy = false }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (requestId == requestEpoch) {
+                    error = e.message ?: "Subsonic-Bibliothek nicht erreichbar."
+                }
+            } finally {
+                if (requestId == requestEpoch) busy = false
+            }
         }
+    }
+    // Search is automatic but debounced. Navigation calls load() explicitly;
+    // its lastRequestedSearch marker prevents the duplicate request.
+    LaunchedEffect(search, section, selected?.id) {
+        delay(420)
+        if (selected != null && search != lastRequestedSearch) load()
     }
     fun open(source: SubsonicSource) {
         selected = source
         section = "artists"; artistId = ""; albumId = ""; playlistId = ""; search = ""
         offset = 0; rows = emptyList()
+        pageMayHaveMore = false
         load()
     }
     fun edit(source: SubsonicSource? = null) {
@@ -129,7 +183,11 @@ fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(selected?.name ?: "Musikserver", style = MaterialTheme.typography.headlineSmall)
             TextButton(onClick = {
-                if (selected != null) { selected = null; rows = emptyList() }
+                if (selected != null) {
+                    ++requestEpoch; activeLoad?.cancel()
+                    selected = null; rows = emptyList(); busy = false
+                    pageMayHaveMore = false; error = ""
+                }
                 else onClose()
             }) { Text(if (selected != null) "Serverauswahl" else "Schließen") }
         }
@@ -206,14 +264,38 @@ fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
                 }) { Text("‹ Zurück") }
             }
             Row {
-                OutlinedTextField(search, { search = it }, singleLine = true,
-                    modifier = Modifier.weight(1f), label = { Text("Suchen") })
-                TextButton(onClick = { load() }) { Text("Suchen") }
+                OutlinedTextField(search, { search = it.take(120) }, singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Musik durchsuchen") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (search.isNotBlank()) IconButton(onClick = {
+                            search = ""; load()
+                        }) { Icon(Icons.Rounded.Close, contentDescription = "Suche löschen") }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { load() }))
+                IconButton(onClick = { load() }, enabled = !busy) {
+                    Icon(Icons.Rounded.Refresh, contentDescription =
+                        if (section == "songs" && search.isBlank()) "Neue Titelauswahl" else "Aktualisieren")
+                }
+            }
+            if (rows.isNotEmpty()) {
+                Text("${rows.size} Einträge" + if (pageMayHaveMore) " · weitere verfügbar" else "",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (section == "songs" && search.isBlank() && albumId.isBlank()) {
+                Text("Zufällige Titel aus deiner Sammlung · mit Aktualisieren neu mischen",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (rows.isEmpty() && !busy && error.isBlank())
                 Text("Keine Einträge gefunden.", Modifier.padding(16.dp))
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                items(rows.size) { index ->
+                items(rows.size, key = { index -> "$section:${rows[index].optString("id")}:$index" }) { index ->
                     val entry = rows[index]
                     val label = entry.optString("title")
                         .ifBlank { entry.optString("name", "Unbenannt") }
@@ -241,20 +323,23 @@ fun ExternalSubsonicScreen(player: Player? = null, onClose: () -> Unit,
                         ExternalSubsonicCover(selected, entry, Modifier.size(52.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(label, style = MaterialTheme.typography.titleMedium)
+                            Text(label, style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (description.isNotBlank())
-                                Text(description, style = MaterialTheme.typography.bodySmall)
+                                Text(description, style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         if (section == "songs" || section == "playlistTracks") {
-                            TextButton(onClick = { actionSong = entry }) { Text("⋮") }
-                        } else Text("›")
+                            IconButton(onClick = { actionSong = entry }) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = "Titelaktionen")
+                            }
+                        } else Icon(Icons.Rounded.ChevronRight, contentDescription = null)
                     }
                     HorizontalDivider()
                 }
-                if ((section == "albums" && artistId.isBlank()) ||
-                    (section == "songs" && albumId.isBlank())) {
+                if (pageMayHaveMore) {
                     item {
-                        TextButton(enabled = !busy && rows.isNotEmpty(),
+                        TextButton(enabled = !busy && pageMayHaveMore,
                             onClick = { load(true) }, modifier = Modifier.fillMaxWidth()) {
                             Text("Weitere laden")
                         }
