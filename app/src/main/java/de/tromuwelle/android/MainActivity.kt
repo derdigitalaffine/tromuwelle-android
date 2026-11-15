@@ -207,6 +207,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var error by remember { mutableStateOf("") }
     var playbackError by remember { mutableStateOf("") }
     var current by remember { mutableStateOf<LibraryEntry?>(null) }
+    // Never surface private-film metadata on Home or the global mini-player.
+    var currentPrivate by remember { mutableStateOf(false) }
     var queueEntries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
     var isPlaying by remember { mutableStateOf(false) }
     var radioRetries by remember { mutableIntStateOf(0) }
@@ -432,6 +434,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 controller.play()
             }
             current = entry
+            currentPrivate = section == LibrarySection.PRIVATE && entry.isVideo()
             videoDetail = entry.isVideo()
             radioRetries = 0
             if (entry.kind == EntryKind.RADIO) {
@@ -457,6 +460,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             if (position > 0) ctl.seekTo(position)
             ctl.play()
             activePodcast = episode
+            currentPrivate = false
             current = LibraryEntry("podcast:" + episode.optString("id"),
                 episode.optString("title"), episode.optString("feed_title"),
                 EntryKind.TRACK, duration = episode.optLong("duration"),
@@ -673,13 +677,16 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             onOutput = { localOutputOpen = true },
             onProfile = { profileOpen = true },
             current = current,
+            showPrivatePlayback = !currentPrivate ||
+                (streamTab == StreamTab.VIDEO && section == LibrarySection.PRIVATE),
             player = player,
             isPlaying = isPlaying,
             onPlayer = { audioSheetOpen = true },
             onVideo = { videoDetail = true },
             onClosePlayer = {
                 player?.stop(); player?.clearMediaItems()
-                current = null; playbackError = ""; audioSheetOpen = false
+                current = null; currentPrivate = false
+                playbackError = ""; audioSheetOpen = false
             }
         ) { innerPadding ->
             if (globalSearchOpen) {
@@ -702,7 +709,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 }
             } else if (streamTab == StreamTab.HOME) {
                 Box(Modifier.fillMaxSize().padding(innerPadding)) {
-                    StreamHome(session, recent.toList(), favorites.toSet(), current,
+                    StreamHome(session, recent.toList(), favorites.toSet(),
+                        if (currentPrivate) null else current,
                         onOpen = { item ->
                             if (item.id.startsWith("podcast:") || item.id.startsWith("ext:")) {
                                 audioSheetOpen = true

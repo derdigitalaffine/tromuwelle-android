@@ -75,6 +75,7 @@ fun StreamScaffold(
     onOutput: () -> Unit,
     onProfile: () -> Unit,
     current: LibraryEntry?,
+    showPrivatePlayback: Boolean = true,
     player: Player?,
     isPlaying: Boolean,
     onPlayer: () -> Unit,
@@ -127,7 +128,8 @@ fun StreamScaffold(
         },
         bottomBar = {
             Column(Modifier.fillMaxWidth()) {
-                if (current != null || player?.currentMediaItem != null) {
+                if (showPrivatePlayback &&
+                    (current != null || player?.currentMediaItem != null)) {
                     val title = player?.mediaMetadata?.title?.toString().orEmpty()
                         .ifBlank { current?.title.orEmpty() }
                     val video = current?.isVideo() == true
