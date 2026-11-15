@@ -16,8 +16,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import coil.ImageLoader
-import coil.compose.AsyncImage
+ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import kotlinx.coroutines.delay
@@ -69,9 +68,7 @@ private fun ArtworkPlaceholder(entry: LibraryEntry, modifier: Modifier = Modifie
 fun AuthenticatedArtwork(session: TromuwelleSession, entry: LibraryEntry,
                          modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val loader = remember(context, session) {
-        ImageLoader.Builder(context).okHttpClient(session.client).build()
-    }
+    val loader = session.artworkLoader
     val candidates = remember(entry.id, entry.path, entry.artwork, entry.kind) {
         artworkCandidates(entry, session::query)
     }

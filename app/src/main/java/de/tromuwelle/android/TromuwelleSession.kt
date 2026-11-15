@@ -19,6 +19,13 @@ import java.util.concurrent.TimeUnit
 class TromuwelleApplication : Application() {
     val tlsTrust by lazy { CertificateTrustStore(this) }
     val session by lazy { TromuwelleSession(this) }
+    // One Coil loader for all external OpenSubsonic artwork; per-cover loaders
+    // would each allocate their own memory cache and network resources.
+    val subsonicArtworkLoader by lazy {
+        coil.ImageLoader.Builder(this)
+            .okHttpClient(TlsTrustRegistry.configure(OkHttpClient.Builder()).build())
+            .build()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -39,6 +46,12 @@ class TromuwelleSession(private val application: Application) {
         .readTimeout(65, TimeUnit.SECONDS)
         .followSslRedirects(false)
         .build()
+
+    // A single shared image cache for every Home rail, poster grid and player.
+    // The OkHttp client (including cookies and pinned TLS) is shared with Media3.
+    val artworkLoader by lazy {
+        coil.ImageLoader.Builder(application).okHttpClient(client).build()
+    }
 
     private val prefs = application.getSharedPreferences("connection", 0)
     private val vault = SecureSessionStore(application)
