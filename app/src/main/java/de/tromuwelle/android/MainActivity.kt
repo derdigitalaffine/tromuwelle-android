@@ -124,6 +124,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var error by remember { mutableStateOf("") }
     var playbackError by remember { mutableStateOf("") }
     var current by remember { mutableStateOf<LibraryEntry?>(null) }
+    var queueEntries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
     var isPlaying by remember { mutableStateOf(false) }
     var radioRetries by remember { mutableIntStateOf(0) }
     var fullscreen by remember { mutableStateOf(false) }
@@ -210,7 +211,12 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 }
             }
             override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
-                if (item != null) playbackError = ""
+                if (item != null) {
+                    playbackError = ""
+                    queueEntries.firstOrNull { it.kind.name + ":" + it.id == item.mediaId }?.let {
+                        current = it
+                    }
+                }
             }
         }
         player?.addListener(listener)
@@ -281,6 +287,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             playbackStartMs = if (useTranscode) startSeconds * 1000 else 0L
             val queue = if (entry.kind == EntryKind.TRACK) entries.filter { it.kind == EntryKind.TRACK }
                 .map { it.mediaItem(session) } else listOf(entry.mediaItem(session, compatible, quality, startSeconds, radioBitrate, radioCodec))
+            queueEntries = if (entry.kind == EntryKind.TRACK)
+                entries.filter { it.kind == EntryKind.TRACK } else listOf(entry)
             val position = if (entry.kind == EntryKind.TRACK)
                 entries.filter { it.kind == EntryKind.TRACK }.indexOf(entry).coerceAtLeast(0) else 0
             val closeToEnd = entry.duration > 0 && saved >= entry.duration * 1000 - 30_000
@@ -343,6 +351,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             onPlay = { tracks ->
                 val controller = player
                 if (controller != null && tracks.isNotEmpty()) {
+                    queueEntries = tracks
                     controller.setMediaItems(tracks.map { it.mediaItem(session) })
                     controller.prepare()
                     controller.play()
