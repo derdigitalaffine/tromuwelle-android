@@ -85,6 +85,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var password by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(false) }
     var accountPage by remember { mutableStateOf(false) }
+    var externalPage by remember { mutableStateOf(false) }
     var managementPage by remember { mutableStateOf(false) }
     var setupRequired by remember { mutableStateOf(false) }
     var setupToken by remember { mutableStateOf("") }
@@ -213,7 +214,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
                 if (item != null) {
                     playbackError = ""
-                    queueEntries.firstOrNull { it.kind.name + ":" + it.id == item.mediaId }?.let {
+                    queueEntries.firstOrNull { it.kind.name + ":" + it.id == item.mediaId ||
+                        it.id == item.mediaId }?.let {
                         current = it
                     }
                 }
@@ -346,6 +348,35 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         }
     }
 
+    if (externalPage) {
+        ExternalSubsonicScreen(onClose = { externalPage = false },
+            onPlay = { source, songs, index ->
+                try {
+                    val client = SubsonicClient(source)
+                    val items = songs.map { client.mediaItem(it) }
+                    val chosen = index.coerceIn(0, (items.size - 1).coerceAtLeast(0))
+                    if (items.isNotEmpty() && player != null) {
+                        queueEntries = songs.map { item ->
+                            LibraryEntry("ext:" + source.id + ":" + item.optString("id"),
+                                item.optString("title"), source.name + " · " + item.optString("artist"),
+                                EntryKind.TRACK, item.optString("suffix"), item.optLong("duration"),
+                                artwork = if (item.optString("coverArt").isBlank()) "" else
+                                    client.coverUrl(item.optString("coverArt")))
+                        }
+                        player.setMediaItems(items, chosen, 0L)
+                        player.prepare()
+                        player.play()
+                        current = queueEntries[chosen]
+                        playbackError = ""
+                        playbackStartMs = 0L
+                    }
+                    externalPage = false
+                } catch (e: Exception) {
+                    playbackError = e.message ?: "Externer Musikserver konnte nicht abgespielt werden."
+                }
+            })
+        return
+    }
     if (connected && playlistsPage) {
         MusicPlaylistsScreen(session, onBack = { playlistsPage = false },
             onPlay = { tracks ->
@@ -412,6 +443,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         visualTransformation = PasswordVisualTransformation())
                     Text("Neues Administratorkonto: Passwort mindestens 12 Zeichen.")
                 }
+                OutlinedButton(modifier = Modifier.fillMaxWidth(),
+                    onClick = { externalPage = true }) { Text("Andere Subsonic-Musikserver") }
                 Button(modifier = Modifier.fillMaxWidth(), enabled = !connecting, onClick = {
                     scope.launch {
                         connecting = true; error = ""
@@ -443,6 +476,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 if (session.account.isAdmin) TextButton(onClick = { managementPage = true }) {
                     Text("Verwaltung")
                 }
+                TextButton(onClick = { externalPage = true }) { Text("Weitere Musikserver") }
                 TextButton(onClick = { accountPage = true }) { Text("Konto") }
                 TextButton(onClick = {
                     player?.stop(); player?.clearMediaItems(); current = null
@@ -469,7 +503,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                             isAudio = current?.isVideo() != true,
                             canSeek = current?.kind != EntryKind.FILE || !compatible,
                             onFullscreen = { fullscreen = true }, onPip = onPip)
-                        if (current?.kind == EntryKind.TRACK) {
+                        if (current?.kind == EntryKind.TRACK && current?.id?.startsWith("ext:") != true) {
                             TextButton(onClick = { lyricsEntry = current }) { Text("Liedtext (Lyrics)") }
                         }
                         if (current?.kind == EntryKind.FILE && current?.audio == false) {
