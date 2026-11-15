@@ -119,6 +119,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var fullscreen by remember { mutableStateOf(false) }
     var compatible by remember { mutableStateOf(false) }
     var quality by remember { mutableIntStateOf(1080) }
+    var compatStart by remember { mutableStateOf("0") }
+    var playbackStartMs by remember { mutableLongStateOf(0L) }
     var onlyFavorites by remember { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
 
@@ -137,7 +139,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             val item = player?.currentMediaItem
             if (connected && item != null && item.mediaId.isNotBlank() &&
                 !item.mediaId.startsWith("TV:") && !item.mediaId.startsWith("RADIO:")) {
-                val pos = player.currentPosition
+                val pos = player.currentPosition + playbackStartMs
                 if (pos > 1000) prefs.edit().putLong("resume:" + session.server + ":" +
                     session.username + ":" + item.mediaId, pos).apply()
             }
@@ -216,7 +218,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 if (token == loadToken) {
                     if ((exception as? ServerException)?.status == 401) {
                         connected = false
-                        session.logout()
+                        withContext(Dispatchers.IO) { session.logout() }
                     }
                     error = exception.message ?: "Die Daten konnten nicht geladen werden."
                 }
@@ -238,19 +240,23 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         refresh()
     }
 
-    fun playItem(entry: LibraryEntry) {
+    fun playItem(entry: LibraryEntry, fromSeconds: Long = 0L) {
         val controller = player ?: run {
             playbackError = "Player wird verbunden. Bitte erneut versuchen."
             return
         }
         try {
-            val queue = if (entry.kind == EntryKind.TRACK) entries.filter { it.kind == EntryKind.TRACK }
-                .map { it.mediaItem(session) } else listOf(entry.mediaItem(session, compatible, quality))
-            val position = if (entry.kind == EntryKind.TRACK)
-                entries.filter { it.kind == EntryKind.TRACK }.indexOf(entry).coerceAtLeast(0) else 0
-            val resume = if (entry.kind == EntryKind.TRACK || entry.kind == EntryKind.FILE)
+            val saved = if (entry.kind == EntryKind.TRACK || entry.kind == EntryKind.FILE)
                 prefs.getLong("resume:" + session.server + ":" + session.username + ":" +
                     entry.kind.name + ":" + entry.id, 0L) else 0L
+            val useTranscode = compatible && entry.kind == EntryKind.FILE && !entry.audio
+            val startSeconds = if (useTranscode) fromSeconds.takeIf { it > 0 } ?: (saved / 1000) else 0L
+            playbackStartMs = if (useTranscode) startSeconds * 1000 else 0L
+            val queue = if (entry.kind == EntryKind.TRACK) entries.filter { it.kind == EntryKind.TRACK }
+                .map { it.mediaItem(session) } else listOf(entry.mediaItem(session, compatible, quality, startSeconds))
+            val position = if (entry.kind == EntryKind.TRACK)
+                entries.filter { it.kind == EntryKind.TRACK }.indexOf(entry).coerceAtLeast(0) else 0
+            val resume = if (useTranscode) 0L else saved
             if (entry.kind == EntryKind.FILE && !entry.audio) {
                 scope.launch {
                     val item = try {
@@ -392,7 +398,29 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         if (player != null) NativePlayerControls(player,
                             isLive = current?.kind == EntryKind.TV,
                             isAudio = current?.isVideo() != true,
+                            canSeek = current?.kind != EntryKind.FILE || !compatible,
                             onFullscreen = { fullscreen = true }, onPip = onPip)
+                        if (current?.kind == EntryKind.FILE && current?.audio == false) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(selected = !compatible, onClick = { compatible = false },
+                                    label = { Text("Original") })
+                                FilterChip(selected = compatible, onClick = { compatible = true },
+                                    label = { Text("Kompatibel") })
+                                if (compatible) listOf(480, 720, 1080, 2160).forEach { h ->
+                                    FilterChip(selected = quality == h, onClick = { quality = h },
+                                        label = { Text(h.toString() + "p") })
+                                }
+                            }
+                            if (compatible) {
+                                OutlinedTextField(compatStart, { compatStart = it.filter { c -> c.isDigit() } },
+                                    label = { Text("Start bei Sekunde") }, singleLine = true,
+                                    modifier = Modifier.fillMaxWidth())
+                            }
+                            OutlinedButton(onClick = {
+                                current?.let { playItem(it, compatStart.toLongOrNull() ?: 0L) }
+                            }) { Text("Wiedergabe mit Auswahl neu starten") }
+                        }
                         if (playbackError.isNotBlank()) {
                             Text(playbackError, color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodySmall)

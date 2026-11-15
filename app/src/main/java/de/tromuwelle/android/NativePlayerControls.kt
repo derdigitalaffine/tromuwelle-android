@@ -17,6 +17,7 @@ import kotlinx.coroutines.isActive
 /** Native equivalent of TV quality, language, subtitles and music transport controls. */
 @Composable
 fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
+                         canSeek: Boolean = true,
                          onFullscreen: () -> Unit = {}, onPip: () -> Unit = {}) {
     var duration by remember(player) { mutableLongStateOf(0L) }
     var position by remember(player) { mutableLongStateOf(0L) }
@@ -46,7 +47,7 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        if (duration > 0 && !isLive) {
+        if (duration > 0 && !isLive && canSeek) {
             Slider(value = position.toFloat().coerceIn(0f, duration.toFloat()),
                 onValueChange = { position = it.toLong() },
                 onValueChangeFinished = { player.seekTo(position) },
@@ -69,7 +70,7 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
             }
             if (isLive) {
                 OutlinedButton(onClick = { player.seekToDefaultPosition() }) { Text("● Live") }
-            } else if (duration > 0) {
+            } else if (duration > 0 && canSeek) {
                 OutlinedButton(onClick = { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)) }) {
                     Text("−10 s")
                 }
@@ -83,6 +84,10 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
             }
         }
 
+        if (!canSeek && !isLive && !isAudio) {
+            Text("Kompatibler MP4-Livestream: für Positionssprünge unten eine neue Startzeit wählen.",
+                style = MaterialTheme.typography.bodySmall)
+        }
         if (isAudio) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
