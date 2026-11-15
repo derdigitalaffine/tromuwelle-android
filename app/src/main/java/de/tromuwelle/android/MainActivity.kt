@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.FLAVOR == "automotive" && !isChangingConfigurations) {
             val item = controller?.currentMediaItem
             val id = item?.mediaId.orEmpty()
-            if (id.startsWith("TV:") || id.startsWith("FILE:") ||
+            if (id.startsWith("TV:") ||
                 item?.localConfiguration?.mimeType?.startsWith("video/") == true) {
                 controller?.pause()
             }
