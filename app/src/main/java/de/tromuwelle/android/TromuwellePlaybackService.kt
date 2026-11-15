@@ -40,7 +40,7 @@ class TromuwellePlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(app.session.client)))
             .build()
-        LocalAudioOutput.bind(player)
+        LocalAudioOutput.bind(player, this)
         val openApp = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or
                 PendingIntent.FLAG_UPDATE_CURRENT)

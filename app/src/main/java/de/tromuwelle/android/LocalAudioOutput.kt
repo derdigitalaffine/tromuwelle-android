@@ -23,9 +23,9 @@ object LocalAudioOutput {
     @Volatile private var servicePlayer: ExoPlayer? = null
     private var selectedDeviceId: Int? = null
 
-    fun bind(player: ExoPlayer) {
+    fun bind(player: ExoPlayer, context: Context) {
         servicePlayer = player
-        applyPreference(player.context)
+        applyPreference(context)
     }
 
     fun unbind(player: ExoPlayer) {
