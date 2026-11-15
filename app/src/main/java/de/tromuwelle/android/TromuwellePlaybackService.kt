@@ -10,7 +10,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
 /** Service owns playback so audio remains available outside the UI. */
-@OptIn(androidx.media3.common.util.UnstableApi::class)
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class TromuwellePlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
 
