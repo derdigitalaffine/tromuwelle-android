@@ -22,7 +22,7 @@ import org.json.JSONObject
 
 private enum class AdminArea(val title: String) {
     PLAYLISTS("TV-Playlists"), RADIO("Radio"), STREAM("Streaming"), ROOTS("Medienquellen"),
-    USERS("Benutzer"), SCANS("Indexierung"), SECURITY("Sicherheit")
+    USERS("Benutzer"), SCANS("Indexierung"), SECURITY("Sicherheit"), TAXONOMY("18+ Kategorien")
 }
 
 private data class RootDraft(val name: String, val path: String,
@@ -118,6 +118,7 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                         if (session.account.managed) users = withContext(Dispatchers.IO) { api.users().objects() }
                         settings = withContext(Dispatchers.IO) { api.settings() }
                     }
+                    AdminArea.TAXONOMY -> Unit
                     AdminArea.SECURITY -> {
                         legacyStatus = withContext(Dispatchers.IO) { session.status(session.server) }
                         legacyScope = legacyStatus.optString("scope", "all")
@@ -501,6 +502,9 @@ fun ManagementScreen(session: TromuwelleSession, onBack: () -> Unit, onSourcesCh
                         }
                         HorizontalDivider()
                     }
+                }
+                AdminArea.TAXONOMY -> {
+                    item { AdultTaxonomyScreen(session) }
                 }
                 AdminArea.SECURITY -> {
                     item {

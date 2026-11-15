@@ -88,6 +88,16 @@ class TromuwelleApi(private val session: TromuwelleSession) {
 
     fun mediaMetadata(path: String) = json("/api/media/enrichment?path=${query(path)}")
     fun mediaInfo(path: String) = json("/api/media/info?path=${query(path)}")
+    fun adultTaxonomy(): JSONArray =
+        json("/api/media/adult/taxonomy").optJSONArray("items") ?: JSONArray()
+    fun saveAdultTaxonomy(id: Int, name: String, kind: String,
+                          aliases: Collection<String>, enabled: Boolean): JSONObject {
+        val payload = JSONObject().put("name", name).put("kind", kind)
+            .put("aliases", aliases.toJsonArray()).put("enabled", enabled).toString()
+        return if (id == 0) jsonPost("/api/media/adult/taxonomy", payload)
+            else JSONObject(session.put("/api/media/adult/taxonomy/$id", payload))
+    }
+    fun deleteAdultTaxonomy(id: Int) = session.delete("/api/media/adult/taxonomy/$id")
     fun adultFacets(): JSONArray =
         json("/api/media/adult/facets").optJSONArray("facets") ?: JSONArray()
     fun updateAdultTags(path: String, tags: JSONArray) = JSONObject(session.put(
