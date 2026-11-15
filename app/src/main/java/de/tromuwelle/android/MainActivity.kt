@@ -79,6 +79,14 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var username by remember { mutableStateOf(session.username) }
     var password by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(false) }
+    var accountPage by remember { mutableStateOf(false) }
+    var managementPage by remember { mutableStateOf(false) }
+    var setupRequired by remember { mutableStateOf(false) }
+    var setupToken by remember { mutableStateOf("") }
+    var previousAdminPassword by remember { mutableStateOf("") }
+    var adultTag by remember { mutableStateOf("") }
+    var mediaSort by remember { mutableStateOf("name") }
+    var mediaMinHeight by remember { mutableIntStateOf(0) }
     var connecting by remember { mutableStateOf(false) }
     var section by remember { mutableStateOf(LibrarySection.TV) }
     var browse by remember { mutableStateOf(MusicBrowse.TRACKS) }
@@ -129,7 +137,9 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
             loading = true
             try {
                 val page = withContext(Dispatchers.IO) {
-                    catalog.load(targetSection, targetSearch, targetFolder, targetBrowse, targetArtist, targetAlbum, nextOffset)
+                    catalog.load(targetSection, targetSearch, targetFolder, targetBrowse, targetArtist, targetAlbum,
+                        nextOffset, adultTag, if (targetSection == LibrarySection.PRIVATE && mediaSort == "name")
+                            "newest" else mediaSort, mediaMinHeight)
                 }
                 if (token == loadToken) {
                     entries = if (append) entries + page.items else page.items
@@ -156,6 +166,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         artist = ""; artistName = ""; album = ""; albumName = ""
         browse = MusicBrowse.TRACKS
         folder = ""
+        adultTag = ""; mediaSort = "name"; mediaMinHeight = 0
         entries = emptyList()
         refresh()
     }
@@ -186,6 +197,18 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         prefs.edit().putStringSet("items", favorites.toSet()).apply()
     }
 
+    if (connected && accountPage) {
+        AccountScreen(session, onBack = { accountPage = false }, onSessionRevoked = {
+            player?.stop(); player?.clearMediaItems(); current = null
+            connected = false; accountPage = false
+        })
+        return
+    }
+    if (connected && managementPage) {
+        ManagementScreen(session, onBack = { managementPage = false }, onSourcesChanged = { refresh() })
+        return
+    }
+
     Column(Modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.primaryContainer) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)) {
@@ -204,12 +227,34 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                 OutlinedTextField(password, { password = it }, modifier = Modifier.fillMaxWidth(),
                     label = { Text("Passwort") }, visualTransformation = PasswordVisualTransformation(),
                     singleLine = true)
+                OutlinedButton(enabled = !connecting && server.startsWith("https://"), onClick = {
+                    scope.launch {
+                        try {
+                            val status = withContext(Dispatchers.IO) { session.status(server) }
+                            setupRequired = status.optBoolean("setup_required")
+                            error = if (setupRequired) "Ersteinrichtung erforderlich: Administrator anlegen."
+                                else "Server erreichbar. Bitte anmelden."
+                        } catch (e: Exception) { error = e.message ?: "Prüfung fehlgeschlagen." }
+                    }
+                }) { Text("Server / Ersteinrichtung prüfen") }
+                if (setupRequired) {
+                    OutlinedTextField(setupToken, { setupToken = it }, modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Einrichtungstoken") },
+                        visualTransformation = PasswordVisualTransformation())
+                    OutlinedTextField(previousAdminPassword, { previousAdminPassword = it },
+                        modifier = Modifier.fillMaxWidth(), label = { Text("Bisheriges Adminpasswort (optional)") },
+                        visualTransformation = PasswordVisualTransformation())
+                    Text("Neues Administratorkonto: Passwort mindestens 12 Zeichen.")
+                }
                 Button(modifier = Modifier.fillMaxWidth(), enabled = !connecting, onClick = {
                     scope.launch {
                         connecting = true; error = ""
                         try {
-                            withContext(Dispatchers.IO) { session.login(server, username, password) }
-                            password = ""
+                            withContext(Dispatchers.IO) {
+                                if (setupRequired) session.setup(server, username, password, setupToken, previousAdminPassword)
+                                else session.login(server, username, password)
+                            }
+                            password = ""; setupToken = ""; previousAdminPassword = ""
                             server = session.server
                             connected = true
                             refresh()
@@ -225,49 +270,55 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         } else {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LibrarySection.entries.forEach { item ->
+                LibrarySection.entries.filter { it != LibrarySection.PRIVATE }.forEach { item ->
                     FilterChip(selected = item == section, onClick = { switchSection(item) },
                         label = { Text(item.label) })
                 }
+                if (session.account.isAdmin) TextButton(onClick = { managementPage = true }) {
+                    Text("Verwaltung")
+                }
+                TextButton(onClick = { accountPage = true }) { Text("Konto") }
                 TextButton(onClick = {
-                    player?.stop()
-                    scope.launch { withContext(Dispatchers.IO) { session.logout() }; connected = false }
+                    player?.stop(); player?.clearMediaItems(); current = null
+                    scope.launch {
+                        withContext(Dispatchers.IO) { session.logout() }
+                        connected = false
+                    }
                 }) { Text("Abmelden") }
             }
 
             if (current != null || player?.currentMediaItem != null) {
                 Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        val now = player?.mediaMetadata?.title?.toString().orEmpty().ifBlank { current?.title.orEmpty() }
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val now = player?.mediaMetadata?.title?.toString().orEmpty()
+                            .ifBlank { current?.title.orEmpty() }
                         Text(now, style = MaterialTheme.typography.titleMedium, maxLines = 2)
-                        if (current?.isVideo() == true) {
-                            if (!fullscreen) {
-                                AndroidView(factory = { ctx -> PlayerView(ctx).apply {
-                                    useController = true; keepScreenOn = true
-                                } }, update = { it.player = player }, modifier = Modifier.fillMaxWidth().height(210.dp))
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(onClick = { fullscreen = true }) { Text("Vollbild") }
-                                TextButton(onClick = onPip) { Text("Bild-in-Bild") }
-                            }
-                        } else {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { player?.seekToPreviousMediaItem() }) { Text("⏮") }
-                                Button(onClick = { if (player?.isPlaying == true) player.pause() else player?.play() }) {
-                                    Text(if (isPlaying) "Pause" else "Abspielen")
-                                }
-                                TextButton(onClick = { player?.seekToNextMediaItem() }) { Text("⏭") }
+                        if (current?.isVideo() == true && !fullscreen) {
+                            AndroidView(factory = { ctx -> PlayerView(ctx).apply {
+                                useController = true; keepScreenOn = true
+                            } }, update = { it.player = player }, modifier = Modifier.fillMaxWidth().height(210.dp))
+                        }
+                        if (player != null) NativePlayerControls(player,
+                            isLive = current?.kind == EntryKind.TV,
+                            isAudio = current?.isVideo() != true,
+                            onFullscreen = { fullscreen = true }, onPip = onPip)
+                        if (playbackError.isNotBlank()) {
+                            Text(playbackError, color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall)
+                            if (current?.kind == EntryKind.FILE && !compatible) {
+                                Button(onClick = {
+                                    compatible = true
+                                    current?.let { playItem(it) }
+                                }) { Text("Kompatible Wiedergabe versuchen") }
                             }
                         }
-                        if (playbackError.isNotBlank())
-                            Text(playbackError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                        TextButton(onClick = { player?.stop(); player?.clearMediaItems(); current = null; playbackError = "" }) {
-                            Text("Wiedergabe schließen")
-                        }
+                        TextButton(onClick = {
+                            player?.stop(); player?.clearMediaItems()
+                            current = null; playbackError = ""
+                        }) { Text("Wiedergabe schließen") }
                     }
                 }
             }
-
             if (section == LibrarySection.MUSIC) {
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -284,6 +335,18 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         refresh()
                     }) { Text("‹ Zurück" + listOf(artistName, albumName).filter { it.isNotBlank() }.joinToString(" / ", " · ")) }
                 }
+            }
+            if (section == LibrarySection.MEDIA) {
+                TextButton(onClick = { switchSection(LibrarySection.PRIVATE) }) {
+                    Text("Private 18+-Filmbibliothek öffnen")
+                }
+            }
+            if (section == LibrarySection.PRIVATE) {
+                TextButton(onClick = { switchSection(LibrarySection.MEDIA) }) {
+                    Text("‹ Reguläre Mediathek")
+                }
+                Text("Private 18+-Filme · nur freigegebene Quellen",
+                    style = MaterialTheme.typography.titleMedium)
             }
             if (section == LibrarySection.MEDIA && folder.isNotBlank() && search.isBlank()) {
                 TextButton(onClick = { folder = folder.substringBeforeLast('/', ""); refresh() }) {
@@ -339,11 +402,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                         }
                     }.padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Text(when(entry.kind) {
-                            EntryKind.TV -> "▣"; EntryKind.RADIO -> "♫"; EntryKind.TRACK -> "♪"
-                            EntryKind.ARTIST -> "♬"; EntryKind.ALBUM -> "▤"; EntryKind.FOLDER -> "▸"
-                            EntryKind.FILE -> if(entry.audio) "♪" else "▶"
-                        }, style = MaterialTheme.typography.headlineSmall)
+                        AuthenticatedArtwork(session, entry, Modifier.size(48.dp))
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(entry.title, style = MaterialTheme.typography.titleSmall)
@@ -359,7 +418,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     HorizontalDivider()
                 }
                 if (!onlyFavorites && !loading && entries.size < total &&
-                    (section == LibrarySection.MUSIC || (section == LibrarySection.MEDIA && search.isNotBlank()))) {
+                    (section == LibrarySection.MUSIC || section == LibrarySection.PRIVATE ||
+                        (section == LibrarySection.MEDIA && (search.isNotBlank() || mediaMinHeight > 0 || mediaSort != "name")))) {
                     item {
                         TextButton(onClick = { refresh(append = true) }, modifier = Modifier.fillMaxWidth()) {
                             Text("Weitere laden (${entries.size} / $total)")
