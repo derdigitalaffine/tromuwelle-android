@@ -7,7 +7,7 @@ Referenz: `derdigitalaffine/tromuwelle` `086e8eb69f964681544b66663e61e6cd9d6e319
 | HTTPS-Login, persönliche Benutzer und erster Administrator | Ja | Setup-Token, Login, Logout; serverbestätigte Wiederherstellung verschlüsselter Session |
 | Benutzer/Ordnerrechte | Ja | Admin-Benutzerverwaltung, Rollen, zugewiesene Ordner; Server autoritativ |
 | Altes gemeinsames Passwort / Schutzbereiche | Ja | Verwaltungsreiter Sicherheit nur bei Altinstallation |
-| Caddy-CA | Teilweise | Benutzer-CA wird systemseitig anerkannt; Import und unabhängige Vertrauensprüfung bewusst außerhalb App |
+| Caddy-CA und selbstsignierte Zertifikate | Ja, mit Freigabe | Android-Benutzer-CA weiterhin unterstützt; alternativ manuell bestätigte Leaf-SHA-256-Pins und Widerruf direkt in Tromuwelle- und Subsonic-Verbindungsdialogen |
 | Multicast/URL-/Upload-TV-Playlists | Ja | Sender per API; URL/M3U hochladen, aktualisieren, umbenennen, entfernen |
 | TV-HLS und adaptive Qualitäten | Ja | Media3 HLS mit Auto-/Maximalauflösung |
 | TV-Audiospuren, Textuntertitel, Live-Kante | Ja | Native Media3-Spurauswahl, Live-Sprung; echte Streamvarianten noch geräteprüfen |
@@ -74,3 +74,18 @@ Die Zeilen mit „Ja“ bezeichnen **implementierte Funktionswege**, nicht eine 
 | Android MediaBrowser kompatible Wiedergabe | Ja | Media3 MediaLibraryService und MediaBrowserService-Adapter |
 | Echte DHU-/AAOS-Emulator-/Fahrzeugtests | **Offen** | GitHub CI baut und testet beide Varianten, testet kein Fahrzeug |
 | Server- und plattformübergreifende Fortschritts-/Favoritensynchronisation | Teilweise | Lokale Favoriten und Fortschritt; externe Stars serverseitig |
+
+## v0.3.1-beta.1: TLS und Legacy-Login
+
+| Teilfunktion | Implementierung | Sicherheit |
+|---|---|---|
+| Bestandsserver mit gemeinsamem Passwort | Legacy-Login mit leerem Benutzernamen | Kein fiktiver Standardbenutzer `admin`; Server ignoriert `username` in dieser Phase |
+| Erkennung Nutzerverwaltung | `/api/auth/status` `managed` | Benutzername wird erst bei bestehender Kontenverwaltung benötigt |
+| Selbstsigniertes HTTPS-Serverzertifikat | Im Login und im externen Subsonic-Editor prüfbar | Nur unauthentifizierte TLS-Handshake-Inspektion; **explizite Bestätigung** des angezeigten SHA-256-Fingerabdrucks |
+| Android normaler TLS-Vertrauenspfad | Vorhanden | System- und Benutzer-CAs bleiben aktiv |
+| Zertifikatswechsel | Warnung / erneutes Prüfen | Kein automatischer TOFU-Trust ohne Nutzereinwilligung |
+| Widerruf manuell vertrauter Zertifikate | Ja | Pro Serveradresse/Port; neue Verbindungen werden ohne Pin geprüft |
+| Video/Audio/Radio/Artwork, Fremd-Subsonic | Gemeinsame TLS-Trust-Konfiguration | Keine globale TLS-Deaktivierung |
+| Lokale private CA bei automatischer Leaf-Erneuerung | Via Android-Benutzer-CA | In-App-CA-Import steht nicht zur Verfügung; Android-Einstellungen verwenden |
+
+**Offen:** Die neue Zertifikatsfreigabe ist auf realen Android-Versionen und mit einem konkreten Caddy-Server/Zertifikatswechsel zu testen. Sie ersetzt keine unabhängige Verifizierung des ersten Fingerabdrucks.

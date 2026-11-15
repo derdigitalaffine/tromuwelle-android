@@ -1,6 +1,6 @@
 # Tromuwelle Android
 
-Nativ implementierter Android-Client für das **private Hauptrepository Tromuwelle**. Kotlin, Jetpack Compose, Material 3, Media3/ExoPlayer, MediaSessionService und ein gemeinsamer authentifizierter OkHttp-Transport – **keine WebView**.
+Nativ implementierter Android-Client für das **private Hauptrepository Tromuwelle**. Kotlin, Jetpack Compose, Material 3, Media3/ExoPlayer, MediaLibraryService und ein gemeinsamer authentifizierter OkHttp-Transport – **keine WebView**.
 
 **Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (Hauptrepo-Stand `086e8eb69f96`).
 
@@ -13,22 +13,23 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 - **Private 18+-Filme:** Bewusst separat zu öffnende Bibliothek mit serverseitigem `category=adult`, Facetten/Tags, Poster, Titelsuche, technischen Angaben und administratorseitiger Tag-Bearbeitung und zentral verwalteten Genre-/Schlagwortdefinitionen samt Synonymen. Der Server entscheidet stets über Zugriffsrechte.
 - **Verwaltung:** URL-/Datei-TV-Playlists, Radio, HLS-Puffer und Maximalauflösung, Mediathekpfad, Medienquellen inkl. Typ und Schutz, Benutzer/Rollen/Ordnerrechte, Musik-/Videoindex und klassischer Passwortschutz für Altinstallationen.
 - **Konto:** Administrator-Ersteinrichtung mit Setup-Token, Passwortwechsel, Subsonic-App-Passwort und dedizierte API-Schlüssel inklusive Widerruf.
-- **Sicherheit:** HTTPS-Pflicht, sichere Cookie-Authentifizierung für API, HLS, Cover und Streamdateien, in Android Keystore per AES-GCM verschlüsselte Cookies und serverseitige Überprüfung nach App-Neustart, kein gespeichertes Kontopasswort.
+- **Sicherheit:** HTTPS-Pflicht, sichere Cookie-Authentifizierung für API, HLS, Cover und Streamdateien, in Android Keystore per AES-GCM verschlüsselte Cookies und serverseitige Überprüfung nach App-Neustart, kein gespeichertes Kontopasswort. Optionales, explizites SHA-256-Zertifikatspinning für selbstsignierte Serverzertifikate, mit separater Prüfung, Freigabe und Widerruf.
 - **Android:** minSdk 26 (Android 8.0), Material Hell/Dunkel, MediaSession-Hintergrund-Audio, Benutzersitzungen, Dateiauswahl über SAF.
 
 ## Verbindung
 
-1. Einen Tromuwelle-Server mit HTTPS und einem Benutzerkonto bereitstellen.
-2. Vollständigen HTTPS-Origin eingeben (z. B. `https://server.example.net:8097`), Nutzername und Passwort.
-3. Für private Caddy-CA: CA-Zertifikat **nach unabhängigem Fingerprint-Abgleich** auf dem Android-Gerät als Benutzer-CA installieren. Das öffentliche Zertifikat ist unter `https://<host>:8097/api/certificate` verfügbar. Einstellungen für CA-Zertifikate hängen von der Android-Version ab. **Die TLS-Validierung wird nicht deaktiviert.**
-4. Bei einer unkonfigurierten Installation zuerst „Server / Ersteinrichtung prüfen“ und anschließend Administrator mit mindestens 12-stelligem Passwort und Setup-Token anlegen.
-5. Bei gültiger Session stellt die App den Login beim nächsten Start automatisch wieder her; der Server bestätigt zuvor die aktuelle Berechtigung.
+1. Einen Tromuwelle-Server mit HTTPS bereitstellen. **Ein bisheriger Server mit ausschließlich einem gemeinsamen Passwort funktioniert weiterhin; es gibt dann noch keinen Benutzernamen.**
+2. Vollständigen HTTPS-Origin eingeben (z. B. `https://server.example.net:8097`). **Bei Passwort-Altinstallation das Feld „Benutzername“ leer lassen** und nur das bestehende Passwort eingeben. Nur bei bereits eingerichteten Nutzern den echten Kontonamen eingeben.
+3. **Selbstsigniertes Zertifikat:** In der App unter der Serveradresse „Selbstsigniertes Zertifikat prüfen“ öffnen. Die App liest das öffentliche TLS-Zertifikat **ohne Übertragung des Passwortes** aus. Den **SHA-256-Fingerabdruck unabhängig verifizieren**, dann ausdrücklich freigeben. Die Freigabe gilt nur für das konkret geprüfte Zertifikat, kann jederzeit widerrufen werden und wird bei Zertifikatswechsel nicht stillschweigend erweitert. Das gilt genauso für zusätzliche Subsonic-Server (deren „Server bearbeiten“-Dialog enthält denselben Button).
+4. **Caddy-Server mit interner CA:** Alternativ lässt sich das öffentliche Stamm-CA-Zertifikat `/api/certificate` nach Identitätsprüfung in den Android-Benutzer-Zertifikatspeicher importieren, den die App bereits berücksichtigt. Das ist für **automatisch erneuerte Caddy-Leaf-Zertifikate** auf Dauer praktischer als das Pinning eines einzelnen Leaf-Zertifikats. Kein Klartext-HTTP und keine globale Option „alle Zertifikate vertrauen“.
+5. Bei bisher völlig unkonfiguriertem Server „Server / Ersteinrichtung prüfen“ und anschließend Administrator mit mindestens 12-stelligem Passwort und Setup-Token anlegen. Bei aktivem bisherigen Passwortschutz reicht zur Migration das **bestehende Administrationspasswort** (anstelle eines Tokens); neuer Benutzername und neues Passwort werden selbst gewählt.
+6. Bei gültiger Session stellt die App den Login beim nächsten Start automatisch wieder her; der Server bestätigt zuvor die aktuelle Berechtigung.
 
-## APK – v0.3.0-beta.1
+## APK – v0.3.1-beta.1
 
 Es gibt zwei separat installierbare Varianten:
-- **`tromuwelle-android-v0.3.0-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
-- **`tromuwelle-automotive-video-v0.3.0-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
+- **`tromuwelle-android-v0.3.1-beta.1.apk`** – Android-Handy und **Android Auto (Audio)** über Media3-Medienbibliothek: Radio, Tromuwelle-Musik, Musik-Playlists, externe Subsonic-Quellen, Headunit-Browsing und Sprachsuche.
+- **`tromuwelle-automotive-video-v0.3.1-beta.1.apk`** – **Android Automotive OS** mit videofähiger Oberfläche für **geparkte Fahrzeuge**. Die fahrzeugseitigen UX-Sperren bleiben aktiv; die App pausiert Video bei Verlassen der sichtbaren Oberfläche. Nicht für Video-Projektion mit Android Auto.
 
 Video auf Android Auto ist **nicht** verfügbar. Dieser Unterschied ist eine Plattformbeschränkung, kein fehlender Schalter. Diese APKs verwenden unterschiedliche Anwendungs-IDs; die AAOS-Version ersetzt nicht die Handy-Version.
 
@@ -75,3 +76,11 @@ Buildausgabe: `app/build/outputs/apk/mobile/debug/app-mobile-debug.apk` und `app
 Die detaillierte Tabelle in [docs/feature-parity.md](docs/feature-parity.md) dokumentiert vorhandene Funktionen und reale Lücken. „Webapp-Funktion vorhanden“ bedeutet nicht, dass jedes Browserdetail 1:1 als eigener Android-Bildschirm dupliziert werden muss: Serververwaltung, Streaming-Hardware, Kodi/Jellyfin/Subsonic-Server-APIs und FFmpeg werden bewusst auf dem Server ausgeführt.
 
 Wichtig für Installationen: Bestehende Beta-Versionen sind mit wechselnden GitHub-Runner-Debugschlüsseln signiert; ein Überspielen ist häufig nicht möglich. Eigene Android-App-Daten beim Löschen gehen verloren. Für echte Updatefähigkeit eine **dauerhafte Produktionssignatur** in einem geschützten GitHub-Secret bereitstellen und damit einen Release-Automationsschritt aufbauen. Builds im Workflow sind noch nicht Play-Store-zertifiziert.
+
+### Technische TLS-Sicherheit im Android-Client
+
+- Die App prüft bei normal vertrauenswürdigen Servern weiterhin Android-System- und Benutzer-CA-Zertifikate.
+- Der optionale Ausnahmeweg akzeptiert **ausschließlich ein zuvor ausdrücklich bestätigtes Leaf-Zertifikat** anhand seines SHA-256-Fingerabdrucks und des konkret eingegebenen Serverhosts.
+- Die anfängliche Zertifikats-Inspektion öffnet nur eine TLS-Verbindung und liest das öffentliche Zertifikat, **ohne HTTP-Aufruf oder Passwörter**. Sie beweist für sich allein **nicht**, dass der Server echt ist – Fingerprint vor Zustimmung unabhängig prüfen.
+- Gespeicherte Zertifikatsfingerabdrücke sind nicht geheim; Zertifikatstrust kann im jeweiligen Verbindungsdialog wieder entzogen werden. Beim Serverzertifikatswechsel ist eine neue Freigabe erforderlich.
+- Für langlebige Caddy-Installationen den CA-Weg wählen, weil Zertifikatswechsel bei einzeln gepinnten Leaf-Zertifikaten bewusst eine neue Freigabe verlangen.
