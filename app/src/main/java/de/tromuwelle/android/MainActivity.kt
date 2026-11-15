@@ -1,6 +1,10 @@
 package de.tromuwelle.android
 
 import android.app.PictureInPictureParams
+import android.app.SearchManager
+import android.provider.MediaStore
+import android.content.Intent
+import androidx.lifecycle.lifecycleScope
 import android.content.ComponentName
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -51,6 +55,7 @@ class MainActivity : ComponentActivity() {
         controllerFuture = MediaController.Builder(this, token).buildAsync().also { future ->
             future.addListener({
                 runCatching { controller = future.get() }
+                playVoiceSearch(intent)
             }, ContextCompat.getMainExecutor(this))
         }
         setContent {
@@ -61,6 +66,48 @@ class MainActivity : ComponentActivity() {
                             runCatching { enterPictureInPictureMode(PictureInPictureParams.Builder().build()) }
                         }
                     })
+            }
+        }
+    }
+
+    override fun onNewIntent(newIntent: Intent) {
+        super.onNewIntent(newIntent)
+        setIntent(newIntent)
+        playVoiceSearch(newIntent)
+    }
+
+    /** Android Auto / Assistant can play an audio item by spoken search.
+     * No video is ever selected by a voice action.
+     */
+    private fun playVoiceSearch(incoming: Intent?) {
+        if (incoming?.action != MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) return
+        val query = incoming.getStringExtra(SearchManager.QUERY)
+            .orEmpty().trim().take(120)
+        if (query.isBlank()) return
+        lifecycleScope.launch {
+            val app = application as TromuwelleApplication
+            val chosen = withContext(Dispatchers.IO) {
+                try {
+                    if (app.session.restoreVerified()) {
+                        val catalog = TromuwelleCatalog(app.session)
+                        val songs = catalog.load(LibrarySection.MUSIC, search = query).items
+                        val hit = songs.firstOrNull { it.kind == EntryKind.TRACK }
+                        if (hit != null) return@withContext hit.mediaItem(app.session)
+                        val radio = catalog.load(LibrarySection.RADIO, search = query).items.firstOrNull()
+                        if (radio != null) return@withContext radio.mediaItem(app.session)
+                    }
+                    for (source in SubsonicSourceStore(app).all().take(3)) {
+                        val client = SubsonicClient(source)
+                        val song = client.songs(query).firstOrNull()
+                        if (song != null) return@withContext client.mediaItem(song)
+                    }
+                    null
+                } catch (_: Exception) { null }
+            }
+            if (chosen != null) {
+                controller?.setMediaItem(chosen)
+                controller?.prepare()
+                controller?.play()
             }
         }
     }
