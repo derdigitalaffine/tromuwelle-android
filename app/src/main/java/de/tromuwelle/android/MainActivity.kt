@@ -57,12 +57,26 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 TromuwelleScreen((application as TromuwelleApplication).session, controller,
                     onPip = {
-                        if (android.os.Build.VERSION.SDK_INT >= 26) {
+                        if (BuildConfig.FLAVOR == "mobile" && android.os.Build.VERSION.SDK_INT >= 26) {
                             runCatching { enterPictureInPictureMode(PictureInPictureParams.Builder().build()) }
                         }
                     })
             }
         }
+    }
+
+    override fun onStop() {
+        // AAOS enforces its parked-only video UI. Additionally stop video as soon
+        // as this activity becomes non-visible; do not allow background video.
+        if (BuildConfig.FLAVOR == "automotive" && !isChangingConfigurations) {
+            val item = controller?.currentMediaItem
+            val id = item?.mediaId.orEmpty()
+            if (id.startsWith("TV:") || id.startsWith("FILE:") ||
+                item?.localConfiguration?.mimeType?.startsWith("video/") == true) {
+                controller?.pause()
+            }
+        }
+        super.onStop()
     }
 
     override fun onDestroy() {

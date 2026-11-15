@@ -29,11 +29,13 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
       - name: Unit tests and assemble installable APK
-        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace
+        run: gradle :app:testMobileDebugUnitTest :app:testAutomotiveDebugUnitTest :app:lintMobileDebug :app:lintAutomotiveDebug :app:assembleMobileDebug :app:assembleAutomotiveDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: tromuwelle-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: |
+            app/build/outputs/apk/mobile/debug/*.apk
+            app/build/outputs/apk/automotive/debug/*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -54,7 +56,8 @@ jobs:
       - name: Prepare APK
         run: |
           mkdir -p publish
-          cp release-assets/app-debug.apk "publish/tromuwelle-android-${GITHUB_REF_NAME#release/}.apk"
+          cp release-assets/mobile/debug/app-mobile-debug.apk "publish/tromuwelle-android-${GITHUB_REF_NAME#release/}.apk"
+          cp release-assets/automotive/debug/app-automotive-debug.apk "publish/tromuwelle-automotive-video-${GITHUB_REF_NAME#release/}.apk"
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release.outputs.tag }}

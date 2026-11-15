@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application android:appCategory="video" tools:replace="android:appCategory">
+        <meta-data android:name="com.google.android.gms.car.application" tools:node="remove"/>
+    </application>
+</manifest>

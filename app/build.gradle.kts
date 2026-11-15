@@ -6,7 +6,16 @@ plugins {
 android {
     namespace = "de.tromuwelle.android"
     compileSdk = 35
-    defaultConfig { applicationId = "de.tromuwelle.android"; minSdk = 26; targetSdk = 35; versionCode = 2; versionName = "0.2.0-beta.1" }
+    defaultConfig { applicationId = "de.tromuwelle.android"; minSdk = 26; targetSdk = 35; versionCode = 3; versionName = "0.3.0-beta.1" }
+    flavorDimensions += "surface"
+    productFlavors {
+        create("mobile") { dimension = "surface" }
+        create("automotive") {
+            dimension = "surface"
+            applicationIdSuffix = ".automotive"
+            versionNameSuffix = "-aaos"
+        }
+    }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
@@ -26,6 +35,7 @@ dependencies {
     implementation("androidx.media3:media3-datasource-okhttp:1.6.1")
     implementation("androidx.media3:media3-session:1.6.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.guava:guava:33.4.0-android")
     implementation("com.squareup.okhttp3:okhttp-urlconnection:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("io.coil-kt:coil-compose:2.7.0")
