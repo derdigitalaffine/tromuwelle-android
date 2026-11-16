@@ -48,12 +48,12 @@ class TromuThemeSettings(context: Context) {
         preferences.getString("appearance", null)))
         private set
 
-    fun setPalette(next: TromuPalette) {
+    fun choosePalette(next: TromuPalette) {
         palette = next
         preferences.edit().putString("palette", next.name).apply()
     }
 
-    fun setAppearance(next: TromuAppearance) {
+    fun chooseAppearance(next: TromuAppearance) {
         appearance = next
         preferences.edit().putString("appearance", next.name).apply()
     }
@@ -155,7 +155,7 @@ fun TromuThemeSelector(settings: TromuThemeSettings) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             TromuAppearance.entries.forEach { appearance ->
                 FilterChip(selected = settings.appearance == appearance,
-                    onClick = { settings.setAppearance(appearance) },
+                    onClick = { settings.chooseAppearance(appearance) },
                     label = { Text(appearance.title) })
             }
         }
@@ -163,7 +163,7 @@ fun TromuThemeSelector(settings: TromuThemeSettings) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             TromuPalette.entries.forEach { palette ->
                 FilterChip(selected = settings.palette == palette,
-                    onClick = { settings.setPalette(palette) },
+                    onClick = { settings.choosePalette(palette) },
                     leadingIcon = {
                         Box(Modifier.size(18.dp).background(
                             if (settings.appearance == TromuAppearance.LIGHT)
