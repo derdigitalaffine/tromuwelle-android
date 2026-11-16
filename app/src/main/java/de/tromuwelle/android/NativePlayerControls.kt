@@ -1,6 +1,7 @@
 package de.tromuwelle.android
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.foundation.layout.*
@@ -26,8 +27,9 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
     var position by remember(player) { mutableLongStateOf(0L) }
     var draggingPosition by remember(player) { mutableStateOf(false) }
     var isPlaying by remember(player) { mutableStateOf(player.isPlaying) }
+    var playbackState by remember(player) { mutableIntStateOf(player.playbackState) }
     var volume by remember(player) { mutableFloatStateOf(player.volume) }
-    var selectedQuality by remember { mutableIntStateOf(0) }
+    var selectedQuality by remember(player) { mutableIntStateOf(0) }
     var trackVersion by remember { mutableIntStateOf(0) }
     var trackDialog by remember { mutableStateOf(false) }
     var speed by remember(player) { mutableFloatStateOf(player.playbackParameters.speed) }
@@ -38,6 +40,8 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
         val listener = object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) { trackVersion++ }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlaybackStateChanged(state: Int) { playbackState = state }
+            override fun onVolumeChanged(value: Float) { volume = value }
             override fun onMediaItemTransition(
                 mediaItem: androidx.media3.common.MediaItem?, reason: Int
             ) {
@@ -64,7 +68,13 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (playbackState == Player.STATE_BUFFERING) {
+            LinearProgressIndicator(Modifier.fillMaxWidth().height(3.dp))
+            Text("Stream wird gepuffert …",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (duration > 0 && !isLive && canSeek) {
             Slider(
                 value = position.toFloat().coerceIn(0f, duration.toFloat()),
@@ -186,11 +196,18 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Lautstärke", style = MaterialTheme.typography.labelMedium)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Rounded.VolumeUp, contentDescription = "Lautstärke",
+                modifier = Modifier.size(20.dp))
             Slider(modifier = Modifier.weight(1f), value = volume,
                 onValueChange = { volume = it; player.volume = it })
-            TextButton(onClick = { trackDialog = true }) { Text("Ton / Text") }
+            OutlinedButton(onClick = { trackDialog = true }) {
+                Icon(Icons.Rounded.Subtitles, contentDescription = null,
+                    modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Spuren")
+            }
         }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(0.75f, 1f, 1.25f, 1.5f, 2f).forEach { s ->
@@ -207,7 +224,9 @@ fun NativePlayerControls(player: Player, isLive: Boolean, isAudio: Boolean,
         AlertDialog(onDismissRequest = { trackDialog = false },
             title = { Text("Tonspuren und Untertitel") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.heightIn(max = 440.dp)
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val audio = groups.filter { it.type == C.TRACK_TYPE_AUDIO }
                     val subtitles = groups.filter { it.type == C.TRACK_TYPE_TEXT }
                     Text("Ton", style = MaterialTheme.typography.titleSmall)

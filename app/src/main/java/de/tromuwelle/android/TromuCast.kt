@@ -1,8 +1,10 @@
 package de.tromuwelle.android
 
 import android.content.Context
-import android.net.Uri
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -21,21 +23,30 @@ import com.google.android.gms.cast.MediaMetadata
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastOptions
+import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.OptionsProvider
+import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.SessionProvider
+import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-/** Native Google Cast default receiver; no unregistered custom receiver app ID. */
+/**
+ * The standard Cast device picker is intentional: enabling Android 13's
+ * system output switcher without the MediaTransferReceiver/remote-session
+ * integration can make media routes appear connected without a Cast session.
+ */
 class TromuCastOptionsProvider : OptionsProvider {
     override fun getCastOptions(context: Context): CastOptions =
         CastOptions.Builder()
             .setReceiverApplicationId(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID)
-            .setShowSystemOutputSwitcherOnCastIconClick(true)
+            .setShowSystemOutputSwitcherOnCastIconClick(false)
+            .setEnableReconnectionService(true)
+            .setResumeSavedSession(true)
             .build()
 
     override fun getAdditionalSessionProviders(context: Context): List<SessionProvider>? = null
@@ -52,13 +63,12 @@ data class CastSource(val kind: String, val identifier: String) {
                 entry.kind == EntryKind.TRACK -> CastSource("music", entry.id)
                 entry.kind == EntryKind.FILE && !entry.audio ->
                     CastSource("video", entry.path)
-                else -> null // TV needs a credential-free rewritten HLS manifest.
+                else -> null // TV requires a credential-free rewritten HLS manifest.
             }
         }
     }
 }
 
-/** A Cast receiver makes independent HTTPS requests; Android TLS pins/cookies do not transfer. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CastOutputSheet(
@@ -71,210 +81,362 @@ fun CastOutputSheet(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cast = remember(context) {
-        runCatching { CastContext.getSharedInstance(context) }.getOrNull()
+        if (BuildConfig.FLAVOR == "automotive") null else
+            runCatching { CastContext.getSharedInstance(context) }.getOrNull()
     }
-    var busy by remember { mutableStateOf(false) }
+    var castSession by remember(cast) {
+        mutableStateOf(cast?.sessionManager?.currentCastSession)
+    }
     var message by remember { mutableStateOf("") }
-    var connectedTick by remember { mutableIntStateOf(0) }
-    // Cast SDK updates sessions asynchronously after the platform route picker closes.
-    LaunchedEffect(cast) {
-        while (isActive) {
-            delay(1000)
-            connectedTick++
-        }
-    }
-    val castSession = remember(cast, connectedTick) {
-        cast?.sessionManager?.currentCastSession
-    }
-    val active = castSession?.isConnected == true
+    var failure by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var pendingUrl by remember { mutableStateOf<String?>(null) }
+    var mediaRevision by remember { mutableIntStateOf(0) }
+    var remotePosition by remember { mutableLongStateOf(0L) }
+    var remoteDuration by remember { mutableLongStateOf(0L) }
+    var scrubbing by remember { mutableStateOf(false) }
+    val remote = castSession?.takeIf { it.isConnected }?.remoteMediaClient
+    val active = castSession?.isConnected == true && remote != null
     val deviceName = castSession?.castDevice?.friendlyName.orEmpty()
     val source = CastSource.fromEntry(entry)
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(13.dp)) {
+
+    // Cast sessions survive the composable; event callbacks must be tied to
+    // its lifecycle, not a one-second polling loop.
+    DisposableEffect(cast) {
+        if (cast == null) return@DisposableEffect onDispose { }
+        val listener = object : SessionManagerListener<CastSession> {
+            override fun onSessionStarting(session: CastSession) {
+                message = "Verbindung zum Cast-Gerät wird hergestellt …"
+                failure = false
+            }
+            override fun onSessionStarted(session: CastSession, sessionId: String) {
+                castSession = session
+                message = "Gerät verbunden. Du kannst jetzt Medien übertragen."
+                failure = false
+            }
+            override fun onSessionStartFailed(session: CastSession, error: Int) {
+                castSession = null; pendingUrl = null; busy = false
+                message = "Cast-Verbindung fehlgeschlagen. Prüfe WLAN und Google Play-Dienste."
+                failure = true
+            }
+            override fun onSessionEnding(session: CastSession) {
+                pendingUrl = null
+                busy = false
+            }
+            override fun onSessionEnded(session: CastSession, error: Int) {
+                castSession = null; pendingUrl = null; busy = false
+                message = "Cast-Verbindung beendet."
+                failure = false
+            }
+            override fun onSessionResuming(session: CastSession, sessionId: String) {
+                message = "Cast-Verbindung wird wiederhergestellt …"
+                failure = false
+            }
+            override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+                castSession = session
+                message = "Cast-Verbindung wiederhergestellt."
+                failure = false
+            }
+            override fun onSessionResumeFailed(session: CastSession, error: Int) {
+                castSession = null; pendingUrl = null; busy = false
+                message = "Cast-Verbindung konnte nicht wiederhergestellt werden."
+                failure = true
+            }
+            override fun onSessionSuspended(session: CastSession, reason: Int) {
+                castSession = null; pendingUrl = null; busy = false
+                message = "Verbindung unterbrochen. Cast versucht die Wiederherstellung."
+                failure = true
+            }
+        }
+        cast.sessionManager.addSessionManagerListener(listener, CastSession::class.java)
+        castSession = cast.sessionManager.currentCastSession
+        onDispose {
+            cast.sessionManager.removeSessionManagerListener(listener, CastSession::class.java)
+        }
+    }
+
+    DisposableEffect(remote) {
+        if (remote == null) return@DisposableEffect onDispose { }
+        val callback = object : RemoteMediaClient.Callback() {
+            override fun onStatusUpdated() { mediaRevision++ }
+            override fun onMetadataUpdated() { mediaRevision++ }
+            override fun onMediaError(error: com.google.android.gms.cast.MediaError) {
+                pendingUrl = null; busy = false
+                failure = true
+                message = "Der Fernseher konnte die Datei nicht abspielen. " +
+                    "Prüfe Codec, Cast-LAN-Zugriff und Zertifikat."
+                mediaRevision++
+            }
+        }
+        val progress = RemoteMediaClient.ProgressListener { position, duration ->
+            if (!scrubbing) remotePosition = position.coerceAtLeast(0L)
+            remoteDuration = duration.coerceAtLeast(0L)
+        }
+        remote.registerCallback(callback)
+        remote.addProgressListener(progress, 1000L)
+        remote.requestStatus()
+        onDispose {
+            remote.unregisterCallback(callback)
+            remote.removeProgressListener(progress)
+        }
+    }
+
+    // A successful LOAD request means only that the receiver accepted a
+    // command, NOT that it fetched/decoded the media. Stop local sound only
+    // after receiver playback for this exact ticket is confirmed.
+    LaunchedEffect(mediaRevision, pendingUrl, remote) {
+        val pending = pendingUrl ?: return@LaunchedEffect
+        val current = remote ?: return@LaunchedEffect
+        val info = current.mediaStatus?.mediaInfo
+        if (info?.contentId == pending && current.isPlaying) {
+            player?.pause()
+            pendingUrl = null
+            busy = false
+            failure = false
+            message = "Wiedergabe läuft auf " + deviceName.ifBlank { "dem Cast-Gerät" } + "."
+        }
+    }
+    LaunchedEffect(pendingUrl, remote) {
+        val requested = pendingUrl ?: return@LaunchedEffect
+        delay(30_000L)
+        if (pendingUrl == requested) {
+            pendingUrl = null; busy = false
+            failure = true
+            message = "Cast hat den Stream noch nicht gestartet. " +
+                "Die Wiedergabe bleibt auf diesem Gerät. Prüfe, ob der Fernseher " +
+                "den Server per HTTPS oder über den Cast-LAN-Proxy erreichen kann."
+        }
+    }
+    val statusLabel = when {
+        !active -> "Kein Cast-Gerät verbunden"
+        remote?.isPlaying == true -> "Wiedergabe auf dem Fernseher"
+        remote?.isBuffering == true -> "Fernseher puffert den Stream …"
+        remote?.isPaused == true -> "Wiedergabe am Fernseher pausiert"
+        remote?.hasMediaSession() == true -> "Medienempfänger bereit"
+        else -> "Bereit zur Übertragung"
+    }
+    Column(Modifier.fillMaxWidth().heightIn(max = 650.dp)
+        .verticalScroll(rememberScrollState())
+        .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.CastConnected, contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+            Icon(if (active) Icons.Rounded.CastConnected else Icons.Rounded.Cast,
+                contentDescription = null, tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(34.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Auf Fernseher streamen", style = MaterialTheme.typography.headlineSmall)
-                Text(if (active) "Verbunden mit $deviceName"
-                    else "Chromecast, Google TV und Cast-Lautsprecher",
+                Text("Chromecast", style = MaterialTheme.typography.headlineSmall)
+                Text(if (active) deviceName.ifBlank { "Cast-Gerät" } else
+                    "Google TV, Chromecast und Cast-Lautsprecher",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Text("Deine lokalen Audiogeräte und Bluetooth-Kopfhörer wählst du über " +
-            "„Audioausgabe“; Cast sendet den Stream direkt vom Tromuwelle-Server.",
-            style = MaterialTheme.typography.bodySmall)
-        if (cast == null || BuildConfig.FLAVOR == "automotive") {
-            Text("Cast ist auf diesem Gerät nicht verfügbar. Google Play-Dienste " +
-                "und ein unterstütztes Android-Handy sind für die Google-Cast-Senderfunktion erforderlich.",
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (active) Icons.Rounded.Wifi else Icons.Rounded.WifiOff,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(10.dp))
+                Text(statusLabel, modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        if (cast == null) {
+            Text("Google Cast ist auf diesem Gerät nicht verfügbar. " +
+                "Auf Android Automotive wird die Senderfunktion nicht angeboten.",
                 color = MaterialTheme.colorScheme.error)
         } else {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("1. Cast-Gerät auswählen", style = MaterialTheme.typography.titleMedium)
-                    Text(if (active) "Gerät ausgewählt" else "Tippe auf das Cast-Symbol",
-                        style = MaterialTheme.typography.bodySmall)
+                    Text("Wiedergabegerät", style = MaterialTheme.typography.titleMedium)
+                    Text(if (active) "Zum Wechseln auf das Cast-Symbol tippen" else
+                        "Gerät im selben Netzwerk auswählen",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                AndroidView(
-                    factory = { ctx ->
-                        MediaRouteButton(ctx).apply {
-                            CastButtonFactory.setUpMediaRouteButton(ctx, this)
-                        }
-                    }, modifier = Modifier.size(58.dp))
-                IconButton(onClick = { connectedTick++ }) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = "Verbindung aktualisieren")
-                }
+                AndroidView(factory = { ctx ->
+                    MediaRouteButton(ctx).apply {
+                        CastButtonFactory.setUpMediaRouteButton(ctx, this)
+                    }
+                }, modifier = Modifier.size(56.dp))
             }
             HorizontalDivider()
-            Text("2. Wiedergabe übertragen",
-                style = MaterialTheme.typography.titleMedium)
-            Text(entry?.title ?: "Wähle zuerst einen Titel, Podcast, Film oder Radiosender.",
-                maxLines = 2, style = MaterialTheme.typography.bodyMedium)
+            Text("Medien übertragen", style = MaterialTheme.typography.titleMedium)
+            Text(entry?.title ?: "Starte zuerst Musik, Podcast, Radio oder einen Film.",
+                style = MaterialTheme.typography.bodyMedium, maxLines = 2)
             Button(enabled = active && source != null && !busy,
                 onClick = {
                     val chosen = source ?: return@Button
-                    val liveClient = cast?.sessionManager?.currentCastSession
-                        ?.remoteMediaClient
-                    if (liveClient == null) {
-                        message = "Bitte zuerst ein Cast-Gerät verbinden."; return@Button
+                    val castClient = cast.sessionManager.currentCastSession?.remoteMediaClient
+                    if (castClient == null) {
+                        message = "Bitte zuerst ein Cast-Gerät verbinden."
+                        failure = true
+                        return@Button
                     }
                     scope.launch {
                         busy = true
-                        message = ""
+                        failure = false
+                        message = "Sicheren Medienlink vorbereiten …"
                         try {
-                            val result = withContext(Dispatchers.IO) {
+                            val ticket = withContext(Dispatchers.IO) {
                                 JSONObject(session.post("/api/cast/ticket",
                                     JSONObject().put("kind", chosen.kind)
                                         .put("identifier", chosen.identifier).toString()))
                             }
-                            val rawPath = result.getString("url")
-                            require(rawPath.startsWith("/api/cast/stream/")) {
-                                "Ungültiger Wiedergabelink des Servers."
+                            val rawPath = ticket.getString("url")
+                            val mediaUrl = resolveCastStreamUrl(
+                                rawPath, session.url(rawPath), ticket.optString("lan_url"))
+                            val mime = ticket.getString("mime")
+                            require(mime.matches(Regex("[A-Za-z0-9.+-]+/[A-Za-z0-9.+-]+"))) {
+                                "Ungültiger Medientyp des Cast-Streams."
                             }
-                            val optionalLan = result.optString("lan_url")
-                            val mediaUrl = if (optionalLan.isNotBlank()) {
-                                // Only the server's expressly enabled LAN bridge may return
-                                // a cleartext URL. It carries ONLY a random media grant,
-                                // never an account cookie or an authenticated API request.
-                                val candidate = Uri.parse(optionalLan)
-                                val ip = candidate.host.orEmpty()
-                                val validIp = ip.matches(
-                                    Regex("""(?:[0-9]{1,3}\.){3}[0-9]{1,3}"""))
-                                require(candidate.scheme == "http" && candidate.port == 8098 &&
-                                    candidate.encodedPath == rawPath && validIp) {
-                                    "Ungültiger LAN-Cast-Link vom Server."
-                                }
-                                optionalLan
-                            } else session.url(rawPath)
-                            val mime = result.getString("mime")
-                            val castMetadata = MediaMetadata(if (chosen.kind == "video")
-                                MediaMetadata.MEDIA_TYPE_MOVIE
-                                else MediaMetadata.MEDIA_TYPE_MUSIC_TRACK).apply {
-                                putString(MediaMetadata.KEY_TITLE, entry?.title.orEmpty())
-                                putString(MediaMetadata.KEY_SUBTITLE, entry?.description.orEmpty())
+                            val currentSession = cast.sessionManager.currentCastSession
+                            require(currentSession?.isConnected == true &&
+                                currentSession.remoteMediaClient === castClient) {
+                                "Cast-Verbindung wurde während des Ladens unterbrochen."
                             }
-                            val remoteInfo = MediaInfo.Builder(mediaUrl)
+                            val info = MediaInfo.Builder(mediaUrl)
                                 .setStreamType(if (chosen.kind == "radio")
-                                    MediaInfo.STREAM_TYPE_LIVE
-                                    else MediaInfo.STREAM_TYPE_BUFFERED)
+                                    MediaInfo.STREAM_TYPE_LIVE else MediaInfo.STREAM_TYPE_BUFFERED)
                                 .setContentType(mime)
-                                .setMetadata(castMetadata)
+                                .setMetadata(MediaMetadata(
+                                    if (chosen.kind == "video") MediaMetadata.MEDIA_TYPE_MOVIE
+                                    else MediaMetadata.MEDIA_TYPE_MUSIC_TRACK).apply {
+                                    putString(MediaMetadata.KEY_TITLE, entry?.title.orEmpty())
+                                    putString(MediaMetadata.KEY_SUBTITLE, entry?.description.orEmpty())
+                                })
                                 .apply {
-                                    if (chosen.kind != "radio" && (entry?.duration ?: 0) > 0)
-                                        setStreamDuration(entry!!.duration * 1000)
-                                }.build()
-                            val request = MediaLoadRequestData.Builder()
-                                .setMediaInfo(remoteInfo)
-                                .setAutoplay(true)
-                                .setCurrentTime(if (chosen.kind == "video" || chosen.kind == "radio")
-                                    0L else (player?.currentPosition ?: 0L).coerceAtLeast(0L))
+                                    if (chosen.kind != "radio" && (entry?.duration ?: 0L) > 0L)
+                                        setStreamDuration(entry!!.duration * 1000L)
+                                }
                                 .build()
-                            // Cast SDK requires main-thread operations; suspend I/O finished above.
-                            liveClient.load(request).setResultCallback { feedback ->
-                                message = if (feedback.status.isSuccess) {
-                                    player?.pause()
-                                    "Wiedergabe an $deviceName übertragen."
+                            val originalTitle = player?.mediaMetadata?.title?.toString()
+                            val resumePosition = if (chosen.kind != "radio" &&
+                                originalTitle == entry?.title)
+                                (player?.currentPosition ?: 0L).coerceAtLeast(0L) else 0L
+                            val request = MediaLoadRequestData.Builder()
+                                .setMediaInfo(info)
+                                .setAutoplay(true)
+                                .setCurrentTime(resumePosition)
+                                .build()
+                            pendingUrl = mediaUrl
+                            message = "Receiver lädt den Stream. Lokale Wiedergabe bleibt aktiv …"
+                            castClient.load(request).setResultCallback { outcome ->
+                                if (pendingUrl != mediaUrl) return@setResultCallback
+                                if (outcome.status.isSuccess) {
+                                    message = "Cast lädt die Medien. Wiedergabestart wird bestätigt …"
+                                    mediaRevision++
                                 } else {
-                                    "Cast-Gerät konnte den Stream nicht öffnen. " +
-                                    "Prüfe Netzwerk, unterstützte Codecs und HTTPS-Zertifikat."
+                                    pendingUrl = null
+                                    busy = false
+                                    failure = true
+                                    message = "Cast konnte den Stream nicht öffnen (Status " +
+                                        outcome.status.statusCode + "). Prüfe Erreichbarkeit und Codec."
                                 }
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
-                            message = e.message ?: "Cast konnte nicht gestartet werden."
-                        } finally {
                             busy = false
+                            pendingUrl = null
+                            failure = true
+                            message = e.message ?: "Cast konnte nicht gestartet werden."
                         }
                     }
-                }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Rounded.Cast, contentDescription = null)
+                }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                if (busy) CircularProgressIndicator(Modifier.size(18.dp),
+                    strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                else Icon(Icons.Rounded.Cast, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (busy) "Cast-Link wird vorbereitet …" else "Jetzt auf Cast abspielen")
+                Text(if (busy) "Wird übertragen …" else "Auf Fernseher abspielen")
             }
-            if (active) {
-                Text("Cast-Fernbedienung",
-                    style = MaterialTheme.typography.titleMedium)
-                Row(Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = {
-                        cast?.sessionManager?.currentCastSession
-                            ?.remoteMediaClient?.play()
-                    }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.PlayArrow, null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Play")
+            if (active && remote?.hasMediaSession() == true) {
+                HorizontalDivider()
+                Text("Fernbedienung", style = MaterialTheme.typography.titleMedium)
+                val playing = remote.isPlaying
+                if (!remote.isLiveStream && remoteDuration > 0L) {
+                    Slider(value = remotePosition.toFloat()
+                        .coerceIn(0f, remoteDuration.toFloat()),
+                        onValueChange = { scrubbing = true; remotePosition = it.toLong() },
+                        onValueChangeFinished = {
+                            remote.seek(remotePosition.coerceIn(0L, remoteDuration))
+                            scrubbing = false
+                        },
+                        valueRange = 0f..remoteDuration.toFloat())
+                    Row(Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(formatMediaTime(remotePosition),
+                            style = MaterialTheme.typography.labelSmall)
+                        Text(formatMediaTime(remoteDuration),
+                            style = MaterialTheme.typography.labelSmall)
                     }
-                    OutlinedButton(onClick = {
-                        cast?.sessionManager?.currentCastSession
-                            ?.remoteMediaClient?.pause()
-                    }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.Pause, null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Pause")
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    FilledIconButton(onClick = {
+                        if (playing) remote.pause() else remote.play()
+                    }, modifier = Modifier.size(52.dp)) {
+                        Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = if (playing) "Cast pausieren" else "Cast starten")
                     }
+                    Spacer(Modifier.width(12.dp))
                     OutlinedButton(onClick = {
-                        cast?.sessionManager?.currentCastSession
-                            ?.remoteMediaClient?.stop()
-                    }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.Stop, null)
-                        Spacer(Modifier.width(4.dp))
+                        remote.stop()
+                        pendingUrl = null
+                        busy = false
+                        message = "Wiedergabe am Fernseher angehalten."
+                        failure = false
+                    }) {
+                        Icon(Icons.Rounded.Stop, contentDescription = null)
+                        Spacer(Modifier.width(5.dp))
                         Text("Stop")
                     }
                 }
-                TextButton(onClick = {
-                    cast?.sessionManager?.endCurrentSession(true)
-                    connectedTick++
+                OutlinedButton(onClick = {
+                    cast.sessionManager.endCurrentSession(true)
+                    player?.play()
+                    onLocal()
                 }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Cast-Verbindung trennen")
+                    Icon(Icons.Rounded.PhoneAndroid, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Auf diesem Gerät fortsetzen")
                 }
             }
             if (source == null) {
-                Text(if (entry?.kind == EntryKind.TV) "Live-TV benötigt einen Cast-kompatiblen " +
-                    "HLS-Stream; dieser Modus ist noch nicht freigegeben."
-                    else if (entry?.id?.startsWith("ext:") == true)
-                    "Externes Subsonic-Streaming benötigt eine eigene, gesicherte Cast-Freigabe."
-                    else "Starte zuerst eine kompatible Wiedergabe.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall)
+                Text(when {
+                    entry?.kind == EntryKind.TV ->
+                        "Live-TV benötigt einen für Cast umgeschriebenen HLS-Stream."
+                    entry?.id?.startsWith("ext:") == true ->
+                        "Externe Subsonic-Server benötigen eine eigene sichere Cast-Freigabe."
+                    else -> "Starte zuerst kompatible Musik, Radio, Podcast oder Video."
+                }, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.bodySmall)
-            Text("Cast-Geräte müssen den Tromuwelle-Server selbst erreichen können. " +
-                "Über HTTPS brauchen sie ein öffentlich vertrauenswürdiges Zertifikat; " +
-                "die lokale Android-Zertifikatsfreigabe reicht dafür nicht. " +
-                "Alternativ gibt es im Server einen ausdrücklich aktivierbaren LAN-Proxy " +
-                "(Port 8098), der nur zeitlich begrenzte Medienlinks bereitstellt. " +
-                "Der LAN-Stream ist unverschlüsselt und sollte nur in einem vertrauenswürdigen WLAN " +
-                "verwendet werden. Kein Passwort und kein Session-Cookie werden übertragen.",
+            if (message.isNotBlank()) {
+                Surface(color = if (failure) MaterialTheme.colorScheme.errorContainer
+                    else MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(12.dp)) {
+                    Text(message, Modifier.fillMaxWidth().padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (failure) MaterialTheme.colorScheme.onErrorContainer
+                        else MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+            Text("Cast-Geräte laden Dateien direkt vom Server. Für HTTPS brauchen sie " +
+                "ein öffentlich vertrauenswürdiges Zertifikat; die Android-Zertifikatsfreigabe " +
+                "wird nicht mit dem Fernseher geteilt. Alternativ kann der optionale " +
+                "Cast-LAN-Proxy (Port 8098) auf einem vertrauenswürdigen Heimnetz " +
+                "aktiviert werden. Der Proxy nutzt kurzlebige, mediengebundene Tickets, " +
+                "keine Benutzerpasswörter oder Cookies.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         TextButton(onClick = onLocal, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Rounded.Speaker, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Lautsprecher und Bluetooth wählen")
+            Icon(Icons.Rounded.Speaker, contentDescription = null)
+            Spacer(Modifier.width(7.dp))
+            Text("Audioausgabe und Bluetooth auswählen")
         }
         TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
             Text("Schließen")

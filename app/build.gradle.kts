@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "de.tromuwelle.android"
     compileSdk = 35
-    defaultConfig { applicationId = "de.tromuwelle.android"; minSdk = 26; targetSdk = 35; versionCode = 11; versionName = "0.6.3-beta.1" }
+    defaultConfig { applicationId = "de.tromuwelle.android"; minSdk = 26; targetSdk = 35; versionCode = 12; versionName = "0.7.0-beta.1" }
     flavorDimensions += "surface"
     productFlavors {
         create("mobile") { dimension = "surface" }

@@ -39,33 +39,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
-/** Original Tromuwelle streaming identity: content-first, dark, accessible, no third-party branding. */
-private val Night = Color(0xFF090C13)
-private val Raised = Color(0xFF17202C)
-private val Accent = Color(0xFF69E5CD)
-private val Secondary = Color(0xFFACB6CB)
-
-@Composable
-fun TromuStreamingTheme(content: @Composable () -> Unit) {
-    val colors = darkColorScheme(
-        primary = Accent, onPrimary = Color(0xFF09241F),
-        secondary = Color(0xFF9FB4FF), onSecondary = Night,
-        background = Night, onBackground = Color(0xFFF5F7FB),
-        surface = Color(0xFF111722), onSurface = Color(0xFFF5F7FB),
-        surfaceVariant = Raised, onSurfaceVariant = Secondary,
-        primaryContainer = Color(0xFF173E3D),
-        onPrimaryContainer = Color(0xFFDBFFF5),
-        outline = Color(0xFF354253), error = Color(0xFFFF8791)
-    )
-    MaterialTheme(colorScheme = colors, shapes = Shapes(
-        extraSmall = RoundedCornerShape(8.dp),
-        small = RoundedCornerShape(12.dp),
-        medium = RoundedCornerShape(18.dp),
-        large = RoundedCornerShape(24.dp),
-        extraLarge = RoundedCornerShape(28.dp)
-    ), content = content)
-}
-
 enum class StreamTab(val title: String, val icon: ImageVector) {
     HOME("Start", Icons.Rounded.Home),
     MUSIC("Musik", Icons.Rounded.LibraryMusic),
@@ -118,9 +91,9 @@ fun StreamScaffold(
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).clip(RoundedCornerShape(14.dp))
-                    .background(Brush.linearGradient(listOf(Accent, Color(0xFF6989FF)))),
+                    .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary))),
                     contentAlignment = Alignment.Center) {
-                    Text("T", color = Night, fontWeight = FontWeight.ExtraBold,
+                    Text("T", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.ExtraBold,
                         style = MaterialTheme.typography.headlineSmall)
                 }
                 Spacer(Modifier.width(11.dp))
@@ -159,13 +132,13 @@ fun StreamScaffold(
                         Column {
                         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
-                                .background(Accent.copy(alpha = 0.16f)),
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
                                 contentAlignment = Alignment.Center) {
                                 if (current != null)
                                     AuthenticatedArtwork(session, current, Modifier.fillMaxSize())
                                 else
                                     Icon(Icons.Rounded.GraphicEq,
-                                        contentDescription = null, tint = Accent)
+                                        contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             }
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
@@ -200,7 +173,7 @@ fun StreamScaffold(
                             listOf(EntryKind.RADIO, EntryKind.TV)) {
                             LinearProgressIndicator(progress = { playbackProgress },
                                 modifier = Modifier.fillMaxWidth().height(3.dp),
-                                color = Accent,
+                                color = MaterialTheme.colorScheme.primary,
                                 trackColor = MaterialTheme.colorScheme.surfaceVariant)
                         }
                         }
@@ -230,7 +203,7 @@ fun StreamScaffold(
                                 contentAlignment = Alignment.Center) {
                                 Icon(Icons.Rounded.Waves,
                                     contentDescription = "Tromuwelle",
-                                    tint = Accent, modifier = Modifier.size(30.dp))
+                                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
                             }
                         }) {
                         StreamTab.entries.forEach { destination ->
@@ -258,8 +231,8 @@ fun StreamSectionTitle(title: String, subtitle: String, icon: ImageVector,
     Row(Modifier.fillMaxWidth().padding(start = 17.dp, end = 12.dp, top = 16.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(47.dp).clip(RoundedCornerShape(15.dp))
-            .background(Accent.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, tint = Accent)
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -357,7 +330,7 @@ fun StreamTrackRow(session: TromuwelleSession, entry: LibraryEntry,
             IconButton(onClick = onFavorite, modifier = Modifier.size(42.dp)) {
                 Icon(if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                     contentDescription = if (favorite) "Favorit entfernen" else "Als Favorit speichern",
-                    tint = if (favorite) Accent else MaterialTheme.colorScheme.onSurfaceVariant)
+                    tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (onDownload != null) IconButton(onClick = onDownload,
@@ -575,17 +548,17 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                     1.0f to Color(0xFF070A11).copy(alpha = 0.98f))))
                 Column(Modifier.align(Alignment.BottomStart).padding(22.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(color = Accent.copy(alpha = 0.16f),
+                    Surface(color = Color(0xD91A2837),
                         shape = RoundedCornerShape(8.dp)) {
                         Text(if (featured != null) "DEINE MEDIEN · AUS DER SAMMLUNG"
                             else "TROMUWELLE · DEIN ZUHAUSE",
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                             style = MaterialTheme.typography.labelSmall,
-                            color = Accent, fontWeight = FontWeight.Bold)
+                            color = Color.White, fontWeight = FontWeight.Bold)
                     }
                     Text(featured?.title ?: "Alles, was du\nsehen & hören willst.",
                         style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.ExtraBold, color = Color.White,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(featured?.description?.ifBlank { "Neu in deiner Medienbibliothek" }
                         ?: "Musik, Filme, Podcasts und Radio auf deinem eigenen Server.",
@@ -599,7 +572,11 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                             Spacer(Modifier.width(5.dp))
                             Text(if (featured != null) "Entdecken" else "Mediathek")
                         }
-                        OutlinedButton(onClick = { onSection(LibrarySection.MUSIC) }) {
+                        OutlinedButton(onClick = { onSection(LibrarySection.MUSIC) },
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp, Color.White.copy(alpha = 0.7f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color.White)) {
                             Text("Musik")
                         }
                     }
@@ -630,7 +607,7 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                 shape = RoundedCornerShape(18.dp)) {
                 Row(Modifier.padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Headphones, null,
-                        modifier = Modifier.size(35.dp), tint = Accent)
+                        modifier = Modifier.size(35.dp), tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(13.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Podcasts & Sendungen", fontWeight = FontWeight.ExtraBold)

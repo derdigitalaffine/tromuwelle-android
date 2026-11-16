@@ -4,6 +4,18 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 
 **Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (laufender API-Abgleich mit dem aktuellen privaten Tromuwelle-Server).
 
+## v0.7.0-beta.1 – Chromecast-Stabilität, Material-3-Design und neue Anmeldung
+
+**Google Cast:** Die Geräteauswahl nutzt wieder den Cast-Gerätepicker statt des Android-13-Systemausgabewählers, für den im bisherigen Setup die vollständige MediaTransferReceiver-Anbindung fehlte. SessionManagerListener und RemoteMediaClient.Callback reagieren ereignisgesteuert auf Verbinden, Trennen, Pufferung, Medienfehler und Wiederherstellung. Übertragungen bleiben bis zum bestätigten **Wiedergabestart** auf dem Receiver auch lokal hörbar. Gescheiterte oder ausbleibende Cast-Starts stoppen die lokale Wiedergabe nicht. Status, Zeitposition, Pause/Play, Stop und Wechsel zurück zum lokalen Gerät sind im Cast-Sheet verfügbar. Der Sender überträgt weiterhin **keine Cookies oder Passwörter**; die auf ein Medium beschränkten Cast-Tickets werden zusätzlich validiert. Der optionale HTTP-Bridge-Link darf nur an explizit angegebene private IPv4-LAN-Adressen auf Port 8098 gehen; öffentliches HTTPS bleibt Standard. Android Automotive bleibt von der Cast-Senderfunktion ausgeschlossen.
+
+**Farben und Darstellung:** Zentrale Material-3-Implementierung statt fester Dark-only-Farben. Unter „Farben & Darstellung“ (Profil) und „Design“ (Login) sind Mint, Ozean, Violett, Sonnenuntergang und ab Android 12 dynamische Material-You-Farben wählbar. Helligkeit: System, Hell und Dunkel. Die Einstellungen bleiben ohne Benutzer-/Passwortbezug geräteweit gespeichert. Navigationsakzente, Vorschaubilder, Player und Listen verwenden die echten Theme-Farbrollen.
+
+**Login / Connect:** Komplett neuer, responsiver Anmeldebildschirm mit prägnanter Überschrift, lesbaren Texten, kontrastreichen Formularflächen, Passwort-Sichtbarkeitsschalter, klarer Benutzerkonto-/Altmodus-Erklärung und Verbindungstest. Erstkonfiguration und explizite Prüfung selbstsignierter Zertifikate bleiben erhalten.
+
+**Media3-Player:** Zustand „Stream wird gepuffert“, reaktives Lautstärke-Feedback, kompaktere Spurenauswahl und scrollbareres Dialogfenster für viele Audio- und Untertitelspuren. Der Startbildschirm-Hero bleibt im Hellmodus lesbar.
+
+**Verifikation:** CI: Mobile und Automotive Unit-Tests, Lint, Debug-APK. Zusätzlich Tests für Cast-Ticket-URL-Sicherheit und gespeicherte Theme-Werte. Noch offen: Chromecast-/Google-TV-Gerätetest, Server-Proxy-Konfiguration, Netzwerkwechsel, dauerhaft signierte Releases, UI-Screenshot-/TalkBack-Test. Der Cast-Receiver muss den tatsächlichen Stream weiterhin selbst erreichen und dessen Container/Codec unterstützen.
+
 ## v0.6.3-beta.1 – Playback-Robustheit, gezielter Reconnect und effiziente Fortschritte
 
 **Radio-Stabilität:** Die Wiederverbindung versucht bei echten Netzwerkfehlern und vorübergehenden HTTP-Serverfehlern höchstens dreimal mit kontrollierter Pause. Permanente Probleme wie HTTP 401/403/404 oder Decoderfehler lösen keine Endlosschleife aus. Ein beim Senderwechsel, Abmelden oder Player-Schließen bereits geplanter Neustart darf die aktuelle Wiedergabe nicht übernehmen. Im Audio-Player werden Fehler und ein manueller erneuter Versuch für Radio angezeigt.
