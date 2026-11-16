@@ -446,6 +446,8 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                onOpen: (LibraryEntry) -> Unit,
                onSection: (LibrarySection) -> Unit,
                onPodcasts: () -> Unit,
+               onAirwaves: () -> Unit,
+               onPublicMediatheken: () -> Unit,
                onPodcast: (org.json.JSONObject) -> Unit) {
     var snapshot by remember(session.server, session.username) { mutableStateOf(HomeSnapshot()) }
     var loading by remember(session.server, session.username) { mutableStateOf(true) }
@@ -578,6 +580,48 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                             colors = ButtonDefaults.outlinedButtonColors(
                                 contentColor = Color.White)) {
                             Text("Musik")
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("MEHR ENTDECKEN", style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(onClick = onPublicMediatheken,
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(20.dp)) {
+                        Column(Modifier.padding(15.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Rounded.LiveTv, null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp))
+                            Text("Mediatheken", fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium)
+                            Text("ARD, ZDF, ARTE & mehr", maxLines = 2,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                    }
+                    Surface(onClick = onAirwaves,
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(20.dp)) {
+                        Column(Modifier.padding(15.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Rounded.Flight, null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp))
+                            Text("Flugfunk", fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium)
+                            Text("ATC & US-Feuerwehr", maxLines = 2,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
