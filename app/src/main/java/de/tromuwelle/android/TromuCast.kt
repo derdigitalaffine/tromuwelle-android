@@ -55,7 +55,8 @@ class TromuCastOptionsProvider : OptionsProvider {
 data class CastSource(val kind: String, val identifier: String) {
     companion object {
         fun fromEntry(entry: LibraryEntry?): CastSource? {
-            if (entry == null || entry.id.startsWith("ext:")) return null
+            if (entry == null || entry.id.startsWith("ext:") ||
+                entry.id.startsWith("MEDIATHEK:")) return null
             return when {
                 entry.id.startsWith("podcast:") -> CastSource(
                     "podcast", entry.id.removePrefix("podcast:"))

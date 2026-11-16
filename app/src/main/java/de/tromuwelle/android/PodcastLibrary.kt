@@ -72,6 +72,8 @@ class TromuPodcasts(private val session: TromuwelleSession) {
     }
     fun transcript(id: String, offset: Int = 0, limit: Int = 80): JSONObject =
         JSONObject(session.get("$root/episodes/${session.query(id)}/transcript?offset=$offset&limit=$limit"))
+    fun chapters(id: String): JSONObject =
+        JSONObject(session.get("$root/episodes/${session.query(id)}/chapters"))
     fun mediaItem(episode: JSONObject): MediaItem {
         val id = episode.getString("id")
         val mime = episode.optString("mime")

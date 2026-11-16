@@ -183,3 +183,17 @@ Offen: echte Gerätetests, Podcast-E2E mit einem realen Feed, SNI/Caddy-TLS mit 
 - Hoher Kontrast und responsives Login/Connect inkl. Zertifikatsprüfung, Legacy-Passwortmodus und Initialsetup
 - Media3: sichtbares Buffering, bessere Ton/Untertitel-Auswahl, aktualisierter Lautstärkestatus; responsive Mini-Player-Farben
 - QA: JVM-Tests für Cast-URL-Regeln und Theme-Werte; Mobile+Automotive Builds, Lint, Unit-Tests; Cast-Geräte/Accessibility-Messungen nicht behauptet
+
+## v0.8.0-beta.1 – Backend-Abgleich (16. November 2026)
+
+| Web-/Backend-Funktion | Native Android-Umsetzung | Offener Punkt |
+| --- | --- | --- |
+| MediathekView /api/mediatheken Suche, Senderfilter, Sortierung, Cache | Native Suche, Filter, Seitensteuerung und einheitlicher Media3-Videoplayer; Zugriff über Startseite, Video und Profil | Administrative Katalogsteuerung; einige Streams sind geogeblockt oder nur HTTP |
+| /api/airwaves/feeds, ATC & US-Fire | Eigener Bereich und gewöhnlicher Radio-/Audio-Player mit gesichertem Backend-Stream | Administrative Feed-Import-/Lizenzverwaltung |
+| /api/airwaves/airports, frequencies, runways | ICAO-/US-Staat-Suche, Flughafen-Details, Frequenzen, Bahnen | Vollständige Spezialflugkarten und Navaid-Editor |
+| /api/airwaves/airports/{ident}/aircraft | Serverseitige OpenSky-Abfrage, native MapLibre/OpenFreeMap Karte und Marker | Nicht als garantierte Live-Radar-Daten darstellen; vom Backend budgetiert |
+| /api/podcasts/episodes/{id}/chapters | Kapitelbuttons, Listendialog und Seek im bestehenden Audio-Player | Kapitelbilder und ausführliche Episodendetails |
+| Web-DJ-Studio (zwei Decks, Analyse) | Noch nicht nativ | Eigenständiges größeres Modul |
+| User-/Operator-Administration | Basisverwaltung vorhanden | Unterschiedliche Verwaltungsrechte/Advanced-Tools weiter abgleichen |
+
+Regressions-Tests: Media-URL-Grenzen, Airwaves-Radio-Namespace, Kapitel-Normalisierung und aktive Kapitelposition. CI: Unit-Tests, Lint und APK für beide Flavors. Hardware-/Server-End-to-End-Tests noch ausstehend.
