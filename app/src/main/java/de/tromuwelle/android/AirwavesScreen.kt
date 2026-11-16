@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -64,6 +65,7 @@ fun StreamAirwaves(
     onPlay: (LibraryEntry) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val api = remember(session) { AirwavesApi(session) }
     var enabled by remember { mutableStateOf<Boolean?>(null) }
     var tab by remember { mutableStateOf("atc") }
@@ -74,6 +76,9 @@ fun StreamAirwaves(
     var rows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var total by remember { mutableIntStateOf(0) }
     var status by remember { mutableStateOf<JSONObject?>(null) }
+    var syncing by remember { mutableStateOf(false) }
+    var syncMessage by remember { mutableStateOf("") }
+    var aircraftRefresh by remember { mutableIntStateOf(0) }
     var selectedAirport by remember { mutableStateOf<JSONObject?>(null) }
     var aircraft by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var aircraftNote by remember { mutableStateOf("") }
@@ -105,7 +110,7 @@ fun StreamAirwaves(
         catch (e: Exception) { rows = emptyList(); error = e.message ?: "Daten nicht erreichbar." }
         finally { loading = false }
     }
-    LaunchedEffect(selectedAirport?.optString("ident")) {
+    LaunchedEffect(selectedAirport?.optString("ident"), aircraftRefresh) {
         val ident = selectedAirport?.optString("ident").orEmpty()
         if (ident.isBlank()) return@LaunchedEffect
         try {
@@ -194,8 +199,15 @@ fun StreamAirwaves(
                         "${runway.optInt("length_ft")} ft · ${runway.optString("surface")}",
                         style = MaterialTheme.typography.bodyMedium)
                 }
-                Text("Luftlage · OpenSky",
-                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Luftlage · OpenSky",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f))
+                    IconButton(onClick = { aircraftRefresh++ }) {
+                        Icon(Icons.Rounded.Refresh, "Flugpositionen aktualisieren")
+                    }
+                }
                 Text(aircraftNote.ifBlank { "Luftlage wird geladen …" },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -221,6 +233,35 @@ fun StreamAirwaves(
                             tab = id; page = 0
                         }, label = { Text(title) })
                     }
+            }
+            if (status != null) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("${status?.optInt("airports") ?: 0} US-Flughäfen",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${status?.optInt("frequencies") ?: 0} Frequenzen",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (session.account.isAdmin) {
+                        TextButton(enabled = !syncing, onClick = {
+                            scope.launch {
+                                syncing = true; syncMessage = ""
+                                try {
+                                    withContext(Dispatchers.IO) { api.refreshAirports() }
+                                    syncMessage = "Flughafenimport wurde auf dem Server gestartet."
+                                } catch (e: CancellationException) { throw e }
+                                catch (e: Exception) {
+                                    syncMessage = e.message ?: "Import konnte nicht gestartet werden."
+                                } finally { syncing = false }
+                            }
+                        }) { Text("Daten aktualisieren") }
+                    }
+                }
+                if (syncMessage.isNotBlank()) Text(syncMessage,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall)
             }
             OutlinedTextField(value = query,
                 onValueChange = { query = it.take(100); page = 0 },
