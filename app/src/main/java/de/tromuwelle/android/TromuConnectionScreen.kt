@@ -118,7 +118,7 @@ fun TromuConnectionScreen(
                     OutlinedTextField(value = password, onValueChange = onPassword,
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Passwort") },
-                        leadingIcon = { Icon(Icons.Rounded.LockOutline, contentDescription = null) },
+                        leadingIcon = { Icon(Icons.Rounded.Lock, contentDescription = null) },
                         trailingIcon = {
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                 Icon(if (passwordVisible) Icons.Rounded.VisibilityOff
