@@ -161,6 +161,7 @@ fun StreamAirwaves(
                 val lat = airport.optDouble("lat", Double.NaN)
                 val lon = airport.optDouble("lon", Double.NaN)
                 if (lat.isFinite() && lon.isFinite()) {
+                    AirwavesAirportMap(lat, lon, aircraft, Modifier.fillMaxWidth())
                     OutlinedButton(onClick = {
                         context.startActivity(Intent(Intent.ACTION_VIEW,
                             Uri.parse("https://www.openstreetmap.org/?mlat=$lat&mlon=$lon#map=12/$lat/$lon")))
