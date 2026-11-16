@@ -28,6 +28,7 @@ import androidx.media3.common.MimeTypes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -46,6 +47,11 @@ internal class PublicMediathekenApi(private val session: TromuwelleSession) {
 
     fun status(): JSONObject = JSONObject(session.get("/api/mediatheken/status"))
         .optJSONObject("catalog") ?: JSONObject()
+
+    fun updateCatalog(action: String): JSONObject {
+        require(action in setOf("refresh", "cancel"))
+        return JSONObject(session.post("/api/mediatheken/$action"))
+    }
 
     fun search(q: String, channel: String, sort: String, minDuration: Int,
                offset: Int, limit: Int = 48): JSONObject {
@@ -94,6 +100,7 @@ fun StreamPublicMediatheken(
 ) {
     val api = remember(session) { PublicMediathekenApi(session) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var provider by remember { mutableStateOf("") }
     var providerMenu by remember { mutableStateOf(false) }
@@ -106,6 +113,8 @@ fun StreamPublicMediatheken(
     var total by remember { mutableIntStateOf(0) }
     var cache by remember { mutableStateOf("") }
     var catalog by remember { mutableStateOf<JSONObject?>(null) }
+    var catalogBusy by remember { mutableStateOf(false) }
+    var catalogError by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     LaunchedEffect(session) {
@@ -161,6 +170,56 @@ fun StreamPublicMediatheken(
                 modifier = Modifier.padding(horizontal = 17.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (session.account.isAdmin) {
+            Surface(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("MediathekView-Katalog",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold)
+                    if (catalog?.optBoolean("running") == true) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("${catalog?.optInt("processed") ?: 0} Titel verarbeitet",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(enabled = !catalogBusy &&
+                            catalog?.optBoolean("running") != true,
+                            onClick = {
+                                scope.launch {
+                                    catalogBusy = true; catalogError = ""
+                                    try {
+                                        catalog = withContext(Dispatchers.IO) {
+                                            api.updateCatalog("refresh")
+                                        }
+                                    } catch (e: Exception) {
+                                        catalogError = e.message ?: "Aktualisierung fehlgeschlagen."
+                                    } finally { catalogBusy = false }
+                                }
+                            }) { Text("Filmliste aktualisieren") }
+                        if (catalog?.optBoolean("running") == true) {
+                            TextButton(enabled = !catalogBusy, onClick = {
+                                scope.launch {
+                                    catalogBusy = true; catalogError = ""
+                                    try {
+                                        catalog = withContext(Dispatchers.IO) {
+                                            api.updateCatalog("cancel")
+                                        }
+                                    } catch (e: Exception) {
+                                        catalogError = e.message ?: "Abbruch fehlgeschlagen."
+                                    } finally { catalogBusy = false }
+                                }
+                            }) { Text("Abbrechen") }
+                        }
+                    }
+                    if (catalogError.isNotBlank()) Text(catalogError,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
         OutlinedTextField(value = query, onValueChange = { query = it.take(150); page = 0 },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
