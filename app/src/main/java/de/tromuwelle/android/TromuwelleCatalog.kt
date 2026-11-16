@@ -30,7 +30,9 @@ data class LibraryEntry(
                   radioBitrate: Int = 192, radioCodec: String = "mp3"): MediaItem {
         val relative = when (kind) {
             EntryKind.TV -> "/hls/${session.query(id)}/master.m3u8"
-            EntryKind.RADIO -> "/api/radio/stream/${session.query(id)}?bitrate=$radioBitrate&codec=${session.query(radioCodec)}"
+            EntryKind.RADIO -> if (id.startsWith("airwaves:"))
+                "/api/airwaves/feeds/${session.query(id.removePrefix("airwaves:"))}/stream"
+                else "/api/radio/stream/${session.query(id)}?bitrate=$radioBitrate&codec=${session.query(radioCodec)}"
             EntryKind.TRACK -> "/api/music/stream/${session.query(id)}"
             EntryKind.FILE -> "/api/media/file?path=${session.query(path)}" +
                 if (transcode && !audio) "&transcode=true&height=$quality&start=$start" else ""
@@ -38,7 +40,7 @@ data class LibraryEntry(
         }
         val mime = when(kind) {
             EntryKind.TV -> MimeTypes.APPLICATION_M3U8
-            EntryKind.RADIO -> when (radioCodec) {
+            EntryKind.RADIO -> if (id.startsWith("airwaves:")) null else when (radioCodec) {
                 "aac" -> MimeTypes.AUDIO_AAC
                 "opus" -> MimeTypes.AUDIO_OGG
                 else -> MimeTypes.AUDIO_MPEG
