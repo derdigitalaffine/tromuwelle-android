@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 
 /** User-selectable Material 3 palettes. Settings contain no account information. */
@@ -114,7 +116,23 @@ fun TromuStreamingTheme(settings: TromuThemeSettings, content: @Composable () ->
             onErrorContainer = Color(0xFF5E151C)
         )
     }
-    MaterialTheme(colorScheme = scheme,
+    // One consistent, scalable typography system across discovery, login and
+    // playback. SP units retain Android's accessibility font scaling.
+    val type = remember {
+        val base = Typography()
+        Typography(
+            headlineLarge = base.headlineLarge.copy(
+                fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.7).sp),
+            headlineMedium = base.headlineMedium.copy(
+                fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp),
+            headlineSmall = base.headlineSmall.copy(
+                fontWeight = FontWeight.Bold, letterSpacing = (-0.25).sp),
+            titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
+            titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            labelLarge = base.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+        )
+    }
+    MaterialTheme(colorScheme = scheme, typography = type,
         shapes = Shapes(
             extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
             small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
