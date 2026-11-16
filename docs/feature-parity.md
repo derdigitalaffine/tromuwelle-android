@@ -172,3 +172,14 @@ Offen: echte Gerätetests, Podcast-E2E mit einem realen Feed, SNI/Caddy-TLS mit 
 - Podcast-Progress und Resume-Preferences schreiben nur bei signifikanten Änderungen, Audio-Mini-Player pollt langsamer bei Pause
 - Mobile Audio-Sheet zeigt Radiofehler und erneuten Versuch; reduzierte Artwork-Höhe auf kurzen Displays
 - JVM-Regression für Fehlerklassifikation, Playlist-/Radio-Generationsabgleich und Progress-Schreibschwellen; Realgerät- und Server-Dauertests offen
+
+## v0.7.0-beta.1: Cast, Farben und modernes Login
+
+- Cast-SDK-Callbacks statt permanenter Polling-Abfragen; Media-Status/Fehler, Wiedergabe und Fernbedienung sind mit echter Receiver-Session gekoppelt
+- Lokale Wiedergabe wird erst nach nachgewiesenem Remote-Playback des spezifischen Tickets pausiert, nie nur nach LOAD-Acknowledgement
+- Cast-Sender verwendet den regulären MediaRoute-Picker auf Android 13+ und behält ReconnectionService und gespeicherte Sessions bei; kein impliziter System-Output-Switcher ohne MediaTransferReceiver
+- Bearer-grant URLs werden ausschließlich unter /api/cast/stream/ mit HTTPS oder servergenerierter privater IPv4-Brücke Port 8098 akzeptiert; keine Credentials im Cast-Link
+- Material 3: globaler Theme-Store mit fünf Paletten, Hell/Dunkel/System, gespeicherte Auswahl, Material You ab Android 12
+- Hoher Kontrast und responsives Login/Connect inkl. Zertifikatsprüfung, Legacy-Passwortmodus und Initialsetup
+- Media3: sichtbares Buffering, bessere Ton/Untertitel-Auswahl, aktualisierter Lautstärkestatus; responsive Mini-Player-Farben
+- QA: JVM-Tests für Cast-URL-Regeln und Theme-Werte; Mobile+Automotive Builds, Lint, Unit-Tests; Cast-Geräte/Accessibility-Messungen nicht behauptet
