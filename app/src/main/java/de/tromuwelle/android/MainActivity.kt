@@ -70,8 +70,10 @@ class MainActivity : ComponentActivity() {
             }, ContextCompat.getMainExecutor(this))
         }
         setContent {
-            TromuStreamingTheme {
+            val themeSettings = remember { TromuThemeSettings(this@MainActivity) }
+            TromuStreamingTheme(themeSettings) {
                 TromuwelleScreen((application as TromuwelleApplication).session, controller,
+                    themeSettings,
                     onPip = {
                         if (BuildConfig.FLAVOR == "mobile" && android.os.Build.VERSION.SDK_INT >= 26) {
                             runCatching { enterPictureInPictureMode(PictureInPictureParams.Builder().build()) }
@@ -145,7 +147,8 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip: () -> Unit) {
+private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
+                             themeSettings: TromuThemeSettings, onPip: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("favorites", 0) }
@@ -182,6 +185,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
     var section by remember { mutableStateOf(LibrarySection.TV) }
     var streamTab by remember { mutableStateOf(StreamTab.HOME) }
     var profileOpen by remember { mutableStateOf(false) }
+    var themePickerOpen by remember { mutableStateOf(false) }
     var audioSheetOpen by remember { mutableStateOf(false) }
     var localOutputOpen by remember { mutableStateOf(false) }
     var castOutputOpen by remember { mutableStateOf(false) }
@@ -676,87 +680,62 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
         return
     }
 
-    if (!connected) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Box(Modifier.fillMaxWidth().height(186.dp)
-                .background(Brush.linearGradient(listOf(
-                    Color(0xFF123C38), Color(0xFF24264F), Color(0xFF121722))))) {
-                Column(Modifier.align(Alignment.BottomStart).padding(22.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("TROMUWELLE", style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.Black)
-                    Text("Musik. Filme. Podcasts. Radio. Live-TV.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFD3E2EF))
-                    Text("Alles auf deinem Server.", style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Column(Modifier.fillMaxWidth().padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Mit deinem Server verbinden",
-                    fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(server, { server = it }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("HTTPS-Serveradresse") }, placeholder = { Text("https://server:8097") },
-                    singleLine = true)
-                CertificateTrustControl(address = server)
-                OutlinedTextField(username, { username = it }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Benutzername (bei bisherigem Passwortmodus leer lassen)") },
-                    singleLine = true)
-                Text(when (serverHasAccounts) {
-                    true -> "Benutzerverwaltung aktiv: Kontonamen und Passwort eingeben."
-                    false -> "Bisheriger Passwortmodus: Es gibt noch keinen Benutzernamen. Feld leer lassen."
-                    null -> "Wenn bisher nur ein Passwort vergeben wurde, den Benutzernamen leer lassen."
-                }, style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(password, { password = it }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Passwort") }, visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true)
-                OutlinedButton(enabled = !connecting && server.startsWith("https://"), onClick = {
-                    scope.launch {
-                        try {
-                            val status = withContext(Dispatchers.IO) { session.status(server) }
-                            setupRequired = status.optBoolean("setup_required")
-                            serverHasAccounts = status.optBoolean("managed")
-                            error = if (setupRequired) "Ersteinrichtung erforderlich: Administrator anlegen."
-                                else "Server erreichbar. Bitte anmelden."
-                        } catch (e: Exception) { error = tlsConnectionDiagnostic(e) }
-                    }
-                }) { Text("Server / Ersteinrichtung prüfen") }
-                if (setupRequired) {
-                    OutlinedTextField(setupToken, { setupToken = it }, modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Einrichtungstoken") },
-                        visualTransformation = PasswordVisualTransformation())
-                    OutlinedTextField(previousAdminPassword, { previousAdminPassword = it },
-                        modifier = Modifier.fillMaxWidth(), label = { Text("Bisheriges Adminpasswort (optional)") },
-                        visualTransformation = PasswordVisualTransformation())
-                    Text("Neues Administratorkonto: Passwort mindestens 12 Zeichen.")
-                }
-                OutlinedButton(modifier = Modifier.fillMaxWidth(),
-                    onClick = { externalPage = true }) { Text("Andere Subsonic-Musikserver") }
-                Button(modifier = Modifier.fillMaxWidth(), enabled = !connecting, onClick = {
-                    scope.launch {
-                        connecting = true; error = ""
-                        try {
-                            withContext(Dispatchers.IO) {
-                                if (setupRequired) session.setup(server, username, password, setupToken, previousAdminPassword)
-                                else session.login(server, username, password)
-                            }
-                            password = ""; setupToken = ""; previousAdminPassword = ""
-                            server = session.server
-                            connected = true
-                            refresh()
-                        } catch (e: Exception) { error = tlsConnectionDiagnostic(e) }
-                        finally { connecting = false }
-                    }
-                }) { Text(if (connecting) "Verbinde …" else "Anmelden") }
-                if (connecting) LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("Selbstsigniertes Zertifikat? Über „Zertifikat prüfen“ den SHA-256-Fingerabdruck " +
-                    "mit dem echten Server vergleichen und gezielt freigeben. " +
-                    "Alternativ kann das lokale CA-Zertifikat in Android installiert werden.",
-                    style = MaterialTheme.typography.bodySmall)
-                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+    if (themePickerOpen) {
+        ModalBottomSheet(onDismissRequest = { themePickerOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                TromuThemeSelector(themeSettings)
+                Spacer(Modifier.height(18.dp))
             }
         }
+    }
+
+    if (!connected) {
+        TromuConnectionScreen(
+            server = server, onServer = { server = it },
+            username = username, onUsername = { username = it },
+            password = password, onPassword = { password = it },
+            setupRequired = setupRequired,
+            serverHasAccounts = serverHasAccounts,
+            setupToken = setupToken, onSetupToken = { setupToken = it },
+            previousAdminPassword = previousAdminPassword,
+            onPreviousAdminPassword = { previousAdminPassword = it },
+            connecting = connecting, message = error,
+            onAppearance = { themePickerOpen = true },
+            onSubsonic = { externalPage = true },
+            onCheckServer = {
+                scope.launch {
+                    connecting = true
+                    error = ""
+                    try {
+                        val status = withContext(Dispatchers.IO) { session.status(server) }
+                        setupRequired = status.optBoolean("setup_required")
+                        serverHasAccounts = status.optBoolean("managed")
+                        error = if (setupRequired)
+                            "Ersteinrichtung erforderlich: Administrator anlegen."
+                            else "Server erreichbar. Bitte anmelden."
+                    } catch (e: Exception) { error = tlsConnectionDiagnostic(e) }
+                    finally { connecting = false }
+                }
+            },
+            onLogin = {
+                scope.launch {
+                    connecting = true; error = ""
+                    try {
+                        withContext(Dispatchers.IO) {
+                            if (setupRequired)
+                                session.setup(server, username, password, setupToken, previousAdminPassword)
+                            else session.login(server, username, password)
+                        }
+                        password = ""; setupToken = ""; previousAdminPassword = ""
+                        server = session.server
+                        connected = true
+                        refresh()
+                    } catch (e: Exception) { error = tlsConnectionDiagnostic(e) }
+                    finally { connecting = false }
+                }
+            }
+        )
     } else {
         StreamScaffold(
             session = session,
@@ -1183,6 +1162,11 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?, onPip:
                     fontWeight = FontWeight.ExtraBold)
                 Text(session.account.username.ifBlank { "Gemeinsamer Passwortzugang" },
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { profileOpen = false; themePickerOpen = true }) {
+                    Icon(Icons.Rounded.Palette, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Farben & Darstellung")
+                }
                 TextButton(onClick = { profileOpen = false; accountPage = true }) {
                     Text("Konto & Sicherheit")
                 }
