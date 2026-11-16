@@ -548,17 +548,17 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                     1.0f to Color(0xFF070A11).copy(alpha = 0.98f))))
                 Column(Modifier.align(Alignment.BottomStart).padding(22.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                    Surface(color = Color(0xD91A2837),
                         shape = RoundedCornerShape(8.dp)) {
                         Text(if (featured != null) "DEINE MEDIEN · AUS DER SAMMLUNG"
                             else "TROMUWELLE · DEIN ZUHAUSE",
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            color = Color.White, fontWeight = FontWeight.Bold)
                     }
                     Text(featured?.title ?: "Alles, was du\nsehen & hören willst.",
                         style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.ExtraBold, color = Color.White,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(featured?.description?.ifBlank { "Neu in deiner Medienbibliothek" }
                         ?: "Musik, Filme, Podcasts und Radio auf deinem eigenen Server.",
@@ -572,7 +572,11 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                             Spacer(Modifier.width(5.dp))
                             Text(if (featured != null) "Entdecken" else "Mediathek")
                         }
-                        OutlinedButton(onClick = { onSection(LibrarySection.MUSIC) }) {
+                        OutlinedButton(onClick = { onSection(LibrarySection.MUSIC) },
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp, Color.White.copy(alpha = 0.7f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color.White)) {
                             Text("Musik")
                         }
                     }
