@@ -192,6 +192,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
     var castCandidate by remember { mutableStateOf<LibraryEntry?>(null) }
     var globalSearchOpen by remember { mutableStateOf(false) }
     var podcastsOpen by remember { mutableStateOf(false) }
+    var airwavesOpen by remember { mutableStateOf(false) }
+    var publicMediathekenOpen by remember { mutableStateOf(false) }
     var activePodcast by remember { mutableStateOf<JSONObject?>(null) }
     var transcriptOpen by remember { mutableStateOf(false) }
     var advancedFiltersOpen by remember { mutableStateOf(false) }
@@ -434,6 +436,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
 
     fun switchSection(next: LibrarySection) {
         podcastsOpen = false
+        airwavesOpen = false
+        publicMediathekenOpen = false
         globalSearchOpen = false
         section = next
         streamTab = when (next) {
@@ -454,13 +458,19 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
         refresh()
     }
 
-    BackHandler(enabled = connected && (globalSearchOpen || podcastsOpen)) {
-        if (globalSearchOpen) globalSearchOpen = false
-        else if (podcastsOpen) podcastsOpen = false
+    BackHandler(enabled = connected &&
+        (globalSearchOpen || podcastsOpen || airwavesOpen || publicMediathekenOpen)) {
+        when {
+            globalSearchOpen -> globalSearchOpen = false
+            podcastsOpen -> podcastsOpen = false
+            airwavesOpen -> airwavesOpen = false
+            publicMediathekenOpen -> publicMediathekenOpen = false
+        }
     }
     // The Android system Back button follows the same breadcrumb hierarchy as
     // the on-screen controls instead of abruptly closing the streaming app.
     BackHandler(enabled = connected && !globalSearchOpen && !podcastsOpen &&
+        !airwavesOpen && !publicMediathekenOpen &&
         (album.isNotBlank() || artist.isNotBlank() || folder.isNotBlank())) {
         when {
             album.isNotBlank() -> {
@@ -743,6 +753,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
             onTab = { target ->
                 globalSearchOpen = false
                 podcastsOpen = false
+                airwavesOpen = false
+                publicMediathekenOpen = false
                 if (target == StreamTab.HOME) {
                     streamTab = StreamTab.HOME
                 } else {
@@ -774,7 +786,48 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
                 playbackError = ""; audioSheetOpen = false
             }
         ) { innerPadding ->
-            if (globalSearchOpen) {
+            if (airwavesOpen) {
+                Box(Modifier.fillMaxSize().padding(innerPadding)) {
+                    StreamAirwaves(session, onBack = { airwavesOpen = false },
+                        onPlay = { entry ->
+                            playItem(entry)
+                            audioSheetOpen = true
+                        })
+                }
+            } else if (publicMediathekenOpen) {
+                Box(Modifier.fillMaxSize().padding(innerPadding)) {
+                    StreamPublicMediatheken(session,
+                        onBack = { publicMediathekenOpen = false },
+                        onPlay = { video, media ->
+                            val controller = player
+                            if (controller == null) {
+                                playbackError = "Player wird verbunden. Bitte erneut versuchen."
+                            } else {
+                                ++playbackGeneration
+                                radioRetryJob?.cancel()
+                                radioRetries = 0
+                                activePodcast = null
+                                playbackStartMs = 0L
+                                currentPrivate = false
+                                compatible = false
+                                current = LibraryEntry(
+                                    id = media.mediaId,
+                                    title = video.optString("title"),
+                                    description = video.optString("channel"),
+                                    kind = EntryKind.FILE,
+                                    duration = video.optLong("duration"),
+                                    path = "",
+                                    audio = false)
+                                queueEntries = listOf(current!!)
+                                controller.setMediaItem(media)
+                                controller.prepare()
+                                controller.play()
+                                playbackError = ""
+                                videoDetail = true
+                            }
+                        })
+                }
+            } else if (globalSearchOpen) {
                 Box(Modifier.fillMaxSize().padding(innerPadding)) {
                     StreamGlobalSearch(session, onBack = { globalSearchOpen = false },
                         onOpen = { type, entry ->
@@ -814,6 +867,8 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
                         onPodcasts = {
                             streamTab = StreamTab.MUSIC; podcastsOpen = true
                         },
+                        onAirwaves = { airwavesOpen = true },
+                        onPublicMediatheken = { publicMediathekenOpen = true },
                         onPodcast = { playPodcastEpisode(it) })
                 }
             } else Column(Modifier.fillMaxSize().padding(innerPadding)) {
@@ -836,6 +891,13 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
                     streamTab.icon,
                     onRefresh = { refresh() }
                 )
+                if (section == LibrarySection.RADIO) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
+                        AssistChip(onClick = { airwavesOpen = true },
+                            leadingIcon = { Icon(Icons.Rounded.Flight, null) },
+                            label = { Text("US-Flug- & Einsatzfunk entdecken") })
+                    }
+                }
                 if (section == LibrarySection.MEDIA || section == LibrarySection.PRIVATE) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -844,6 +906,11 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
                                 LibrarySection.MEDIA else LibrarySection.PRIVATE)
                         }, label = { Text(if (section == LibrarySection.PRIVATE)
                             "Reguläre Mediathek" else "Private 18+-Bibliothek") })
+                        if (section == LibrarySection.MEDIA) {
+                            AssistChip(onClick = { publicMediathekenOpen = true },
+                                leadingIcon = { Icon(Icons.Rounded.LiveTv, null) },
+                                label = { Text("ARD · ZDF · ARTE") })
+                        }
                     }
                 }
                 if (section == LibrarySection.MUSIC) {
@@ -1176,6 +1243,20 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
                 TextButton(onClick = {
                     profileOpen = false; streamTab = StreamTab.MUSIC; podcastsOpen = true
                 }) { Text("Podcasts & Abonnements") }
+                TextButton(onClick = {
+                    profileOpen = false; airwavesOpen = true
+                }) {
+                    Icon(Icons.Rounded.Flight, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Flug- & Einsatzfunk")
+                }
+                TextButton(onClick = {
+                    profileOpen = false; publicMediathekenOpen = true
+                }) {
+                    Icon(Icons.Rounded.LiveTv, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Öffentlich-rechtliche Mediatheken")
+                }
                 if (session.account.managed) TextButton(onClick = {
                     profileOpen = false; playlistsPage = true
                 }) { Text("Meine Playlists") }
@@ -1287,6 +1368,11 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
                 }
                 NativePlayerControls(player, isLive = current?.kind == EntryKind.RADIO,
                     isAudio = true, onPip = onPip)
+                if (activePodcast != null &&
+                    player.currentMediaItem?.mediaId ==
+                        "PODCAST:" + activePodcast?.optString("id")) {
+                    StreamPodcastChapters(session, activePodcast!!, player)
+                }
                 if (queueEntries.size > 1) {
                     val nextIndex = (player.currentMediaItemIndex + 1)
                         .coerceAtMost(queueEntries.lastIndex)
