@@ -67,8 +67,10 @@ class KaraokeAudioEngine(
             } else reconcile()
         }
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (isPlaying) reconcile()
-            else {
+            if (isPlaying) {
+                internalPause = false
+                reconcile()
+            } else {
                 pauseFollowers()
                 // User/system paused the MediaSession outside this stage.
                 // Never override an external pause or an audio-focus decision.
@@ -137,13 +139,12 @@ class KaraokeAudioEngine(
     }
 
     private fun pauseForBuffering() {
+        // Listener delivery may be queued by Media3. Keep the internal-pause
+        // guard set until playback actually resumes, not just until pause()
+        // returns, or a delayed callback could look like an external pause.
         internalPause = true
-        try {
-            leader?.let { if (it.playWhenReady) it.pause() }
-            pauseFollowers()
-        } finally {
-            internalPause = false
-        }
+        leader?.let { if (it.playWhenReady) it.pause() }
+        pauseFollowers()
     }
 
     /** A buffer barrier: a fast decoder never runs ahead of a late HTTP stem. */
