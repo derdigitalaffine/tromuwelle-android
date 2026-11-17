@@ -90,7 +90,9 @@ fun KaraokeStage(
     LaunchedEffect(engine) {
         try {
             withContext(Dispatchers.IO) { api.playback(artifact.id, lease) }
-            lyrics = withContext(Dispatchers.IO) { api.lyrics(song.id) }
+            lyrics = try { withContext(Dispatchers.IO) { api.lyrics(song.id) } }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { emptyList() }
             engine.prepare()
             ready = true
             engine.play()
