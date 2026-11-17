@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Tromuwelle.Content" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#080B20</item>
+        <item name="android:navigationBarColor">#080B20</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+    <style name="Theme.Tromuwelle.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/tromuwelle_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_tromuwelle</item>
+        <item name="postSplashScreenTheme">@style/Theme.Tromuwelle.Content</item>
+    </style>
+</resources>
