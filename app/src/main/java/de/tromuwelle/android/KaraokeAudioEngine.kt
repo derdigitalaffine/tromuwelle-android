@@ -12,10 +12,13 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
 /**
- * A 2-stem instrumental uses the existing MediaLibraryService / MediaSession,
- * so playback persists when the activity is backgrounded or the screen locks.
- * A 6-stem arrangement needs six simultaneous decoders; those are scoped to
- * the visible stage and explicitly released on exit.
+ * Plays a 2-stem instrumental through the existing MediaLibraryService, or
+ * six native Media3 stems on the visible stage. Independent Android audio
+ * renderers have no shared sample clock: we therefore wait for ALL decoders,
+ * stop the whole arrangement on rebuffering and continuously align the stem
+ * timelines instead of starting six asynchronous play() requests.
+ *
+ * Methods are called on the player application (main) thread.
  */
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class KaraokeAudioEngine(
@@ -31,110 +34,268 @@ class KaraokeAudioEngine(
         "vocals" to 0f, "instrumental" to 1f, "drums" to 1f,
         "bass" to 1f, "guitar" to 1f, "piano" to 1f, "other" to 1f
     )
-    private val names: List<String> = if (artifact.profile == "6")
+    private val names = if (artifact.profile == "6")
         listOf("drums", "bass", "guitar", "piano", "other", "vocals")
     else listOf("vocals")
-    private val mainStem: String = if (artifact.profile == "6") "drums" else "instrumental"
+    private val mainStem = if (artifact.profile == "6") "drums" else "instrumental"
+    private val mediaId = "KARAOKE:" + artifact.id
     private var loudness = .85f
     private var tempo = 1f
     private var pitch = 1f
+    private var vocalOffsetMs = 0L
+    private val correctionRates = mutableMapOf<String, Float>()
     private var initialized = false
+    private var released = false
+    private var requestedPlayback = false
+    private var internalPause = false
+    private var reconciling = false
+
     val multiStem: Boolean get() = artifact.profile == "6"
     val availableFaders: List<String> get() = if (multiStem) names
         else listOf("instrumental", "vocals")
 
+    private val leader: Player? get() = if (multiStem) players[mainStem]
+        else primary?.takeIf { it.currentMediaItem?.mediaId == mediaId }
+    private fun followers(): Map<String, ExoPlayer> = if (multiStem)
+        players.filterKeys { it != mainStem } else players
+
+    private val leaderListener = object : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) {
+                requestedPlayback = false
+                pauseFollowers()
+            } else reconcile()
+        }
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) {
+                internalPause = false
+                reconcile()
+            } else {
+                pauseFollowers()
+                // User/system paused the MediaSession outside this stage.
+                // Never override an external pause or an audio-focus decision.
+                val master = leader
+                if (requestedPlayback && !internalPause &&
+                    master?.playbackState == Player.STATE_READY &&
+                    master.playWhenReady.not()) requestedPlayback = false
+            }
+        }
+    }
+    private val followerListener = object : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) { reconcile() }
+    }
+
     fun prepare() {
-        if (initialized) return
-        initialized = true
+        if (initialized || released) return
         if (!multiStem) {
-            val controller = requireNotNull(primary) { "Der Media3-Player ist noch nicht bereit." }
-            val media = MediaItem.Builder()
-                .setMediaId("KARAOKE:" + artifact.id)
+            val controller = requireNotNull(primary) {
+                "Der Media3-Hintergrundplayer ist noch nicht bereit."
+            }
+            controller.addListener(leaderListener)
+            controller.setMediaItem(MediaItem.Builder().setMediaId(mediaId)
                 .setUri(api.stemUrl(artifact.id, "instrumental"))
                 .setMimeType("audio/mp4")
                 .setMediaMetadata(MediaMetadata.Builder().setTitle(song.title)
                     .setArtist(song.artist).build())
-                .build()
-            controller.setMediaItem(media)
+                .build())
+            controller.volume = loudness * gains.getValue("instrumental")
             controller.prepare()
-            controller.volume = loudness
-        } else primary?.pause()
-        val factory = DefaultMediaSourceFactory(OkHttpDataSource.Factory(session.client))
+        } else {
+            primary?.pause()
+        }
+        val source = DefaultMediaSourceFactory(
+            OkHttpDataSource.Factory(session.client))
         names.forEach { stem ->
-            val player = ExoPlayer.Builder(context)
-                .setMediaSourceFactory(factory)
-                .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
+            val decoder = ExoPlayer.Builder(context)
+                .setMediaSourceFactory(source)
+                .setAudioAttributes(AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                     multiStem && stem == mainStem)
                 .setHandleAudioBecomingNoisy(true)
                 .build()
-            player.setMediaItem(MediaItem.Builder().setUri(api.stemUrl(artifact.id, stem))
+            players[stem] = decoder
+            decoder.addListener(if (multiStem && stem == mainStem)
+                leaderListener else followerListener)
+            decoder.setMediaItem(MediaItem.Builder()
+                .setUri(api.stemUrl(artifact.id, stem))
                 .setMimeType("audio/mp4").build())
-            player.volume = loudness * (gains[stem] ?: 1f)
-            player.prepare()
-            players[stem] = player
-            if (multiStem && stem == mainStem) {
-                player.addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        // The leading decoder owns audio focus. Followers must
-                        // not continue if focus is lost, playback stalls or an
-                        // incoming call pauses the leading stem.
-                        players.filterKeys { it != mainStem }.values.forEach {
-                            if (isPlaying) it.play() else it.pause()
-                        }
-                    }
-                })
+            decoder.volume = (loudness * gains.getValue(stem)).coerceIn(0f, 1f)
+            decoder.prepare()
+        }
+        initialized = true
+        updatePlaybackParameters()
+    }
+
+    private fun allReady(): Boolean {
+        val master = leader ?: return false
+        if (!initialized || players.size != names.size ||
+            master.playbackState != Player.STATE_READY) return false
+        // Encoders may trim a few samples from one exported stem. A follower
+        // that finishes in the last second must not deadlock the entire song.
+        val masterDuration = master.duration
+        val nearEnd = masterDuration > 0L && masterDuration != C.TIME_UNSET &&
+            master.currentPosition >= (masterDuration - 1500L).coerceAtLeast(0L)
+        return players.values.all { decoder ->
+            decoder.playbackState == Player.STATE_READY ||
+                (decoder !== master && nearEnd &&
+                    decoder.playbackState == Player.STATE_ENDED)
+        }
+    }
+
+    private fun pauseFollowers() {
+        followers().values.forEach { if (it.playWhenReady) it.pause() }
+    }
+
+    private fun pauseForBuffering() {
+        // Listener delivery may be queued by Media3. Keep the internal-pause
+        // guard set until playback actually resumes, not just until pause()
+        // returns, or a delayed callback could look like an external pause.
+        internalPause = true
+        leader?.let { if (it.playWhenReady) it.pause() }
+        pauseFollowers()
+    }
+
+    /** A buffer barrier: a fast decoder never runs ahead of a late HTTP stem. */
+    private fun reconcile() {
+        if (!initialized || released || reconciling || !requestedPlayback) return
+        reconciling = true
+        try {
+            if (!allReady()) {
+                pauseForBuffering()
+                return
+            }
+            val master = leader ?: return
+            if (!master.playWhenReady) {
+                alignFollowers(master.currentPosition, onlyHard = true)
+                if (!allReady()) return
+                // The decoders are already READY: issue the play commands in
+                // one barrier turn instead of waiting one UI polling interval
+                // before the backing vocals begin.
+                followers().forEach { (stem, decoder) ->
+                    if (stem != "vocals" || master.currentPosition >= vocalOffsetMs)
+                        decoder.play()
+                }
+                master.play()
+            }
+            if (!master.isPlaying) {
+                pauseFollowers()
+                return
+            }
+            followers().forEach { (stem, decoder) ->
+                if (decoder.playbackState == Player.STATE_ENDED) return@forEach
+                if (stem == "vocals" && master.currentPosition < vocalOffsetMs) {
+                    if (decoder.playWhenReady) decoder.pause()
+                } else if (!decoder.playWhenReady) {
+                    val target = targetPosition(stem, master.currentPosition)
+                    if (kotlin.math.abs(decoder.currentPosition - target) >= 60L)
+                        decoder.seekTo(target)
+                    if (decoder.playbackState == Player.STATE_READY) decoder.play()
+                }
+            }
+            if (!allReady()) pauseForBuffering()
+        } finally {
+            reconciling = false
+        }
+    }
+
+    private fun targetPosition(stem: String, masterMs: Long): Long =
+        (masterMs - if (stem == "vocals") vocalOffsetMs else 0L)
+            .coerceAtLeast(0L)
+
+    private fun alignFollowers(masterMs: Long, onlyHard: Boolean) {
+        followers().forEach { (stem, decoder) ->
+            if (decoder.playbackState != Player.STATE_READY) return@forEach
+            val action = stemSyncAdjustment(masterMs, decoder.currentPosition,
+                if (stem == "vocals") vocalOffsetMs else 0L)
+            if (action.seekToMs != null) {
+                decoder.seekTo(action.seekToMs)
+                correctionRates[stem] = 1f
+                applyParameters(stem, decoder)
+            } else if (!onlyHard) {
+                val previous = correctionRates[stem] ?: 1f
+                if (kotlin.math.abs(previous - action.rate) >= .003f) {
+                    correctionRates[stem] = action.rate
+                    applyParameters(stem, decoder)
+                }
             }
         }
     }
 
     fun play() {
-        if (multiStem) {
-            players.values.forEach { it.play() }
-        } else {
-            primary?.play()
-            players.values.forEach { it.play() }
-        }
+        if (released || !initialized) return
+        requestedPlayback = true
+        reconcile()
     }
 
     fun pause() {
-        if (!multiStem && primary?.currentMediaItem?.mediaId == "KARAOKE:" + artifact.id)
-            primary.pause()
-        players.values.forEach { it.pause() }
+        requestedPlayback = false
+        pauseForBuffering()
+        correctionRates.clear()
+        updatePlaybackParameters()
     }
 
     fun stop() {
         pause()
-        if (!multiStem && primary?.currentMediaItem?.mediaId == "KARAOKE:" + artifact.id) {
+        if (!multiStem && primary?.currentMediaItem?.mediaId == mediaId) {
             primary.stop()
             primary.clearMediaItems()
         }
     }
 
     fun release() {
-        players.values.forEach { it.release() }
+        if (released) return
+        released = true
+        if (!multiStem) primary?.removeListener(leaderListener)
+        players.forEach { (stem, player) ->
+            player.removeListener(if (multiStem && stem == mainStem)
+                leaderListener else followerListener)
+            player.release()
+        }
         players.clear()
+        correctionRates.clear()
     }
 
     fun seek(positionMs: Long) {
+        if (!initialized || released) return
         val at = positionMs.coerceAtLeast(0L)
-        if (!multiStem) primary?.seekTo(at)
-        players.values.forEach { it.seekTo(at) }
+        val resume = requestedPlayback
+        pauseForBuffering()
+        if (!multiStem) leader?.seekTo(at)
+        players.forEach { (stem, decoder) ->
+            decoder.seekTo(targetPosition(stem, at))
+        }
+        correctionRates.clear()
+        updatePlaybackParameters()
+        requestedPlayback = resume
+        reconcile()
     }
 
     fun setGain(stem: String, gain: Float) {
+        if (stem !in gains) return
         gains[stem] = gain.coerceIn(0f, 1.5f)
         if (stem == "instrumental" && !multiStem) {
-            primary?.volume = (loudness * gains.getValue(stem)).coerceIn(0f, 1f)
+            leader?.volume = (loudness * gains.getValue(stem)).coerceIn(0f, 1f)
         } else players[stem]?.volume =
             (loudness * gains.getValue(stem)).coerceIn(0f, 1f)
     }
 
     fun setVolume(value: Float) {
         loudness = value.coerceIn(0f, 1f)
-        if (!multiStem) primary?.volume = (loudness * gains.getValue("instrumental")).coerceIn(0f, 1f)
-        players.forEach { (name, player) ->
-            player.volume = (loudness * gains.getValue(name)).coerceIn(0f, 1f)
+        if (!multiStem) leader?.volume =
+            (loudness * gains.getValue("instrumental")).coerceIn(0f, 1f)
+        players.forEach { (stem, player) ->
+            player.volume = (loudness * gains.getValue(stem)).coerceIn(0f, 1f)
+        }
+    }
+
+    /** Positive values make vocals audible later than the instrumental track. */
+    fun setVocalOffsetMs(value: Int) {
+        vocalOffsetMs = value.coerceIn(-400, 400).toLong()
+        if (initialized && !released) {
+            correctionRates.remove("vocals")
+            players["vocals"]?.let { applyParameters("vocals", it) }
+            if (playing) synchronize()
         }
     }
 
@@ -148,33 +309,49 @@ class KaraokeAudioEngine(
         updatePlaybackParameters()
     }
 
+    private fun applyParameters(stem: String, player: Player) {
+        player.playbackParameters = PlaybackParameters(
+            tempo * (correctionRates[stem] ?: 1f), pitch)
+    }
     private fun updatePlaybackParameters() {
-        val params = PlaybackParameters(tempo, pitch)
-        if (!multiStem) primary?.playbackParameters = params
-        players.values.forEach { it.playbackParameters = params }
+        if (!multiStem) leader?.playbackParameters = PlaybackParameters(tempo, pitch)
+        players.forEach { (stem, player) -> applyParameters(stem, player) }
     }
 
-    val playing: Boolean get() = if (multiStem) players[mainStem]?.isPlaying == true
-        else primary?.isPlaying == true
-    val positionMs: Long get() = (if (multiStem) players[mainStem]?.currentPosition
-        else primary?.currentPosition)?.coerceAtLeast(0L) ?: 0L
+    val playing: Boolean get() = leader?.isPlaying == true
+    val buffering: Boolean get() = requestedPlayback && !playing
+    val positionMs: Long get() = leader?.currentPosition?.coerceAtLeast(0L) ?: 0L
     val durationMs: Long get() {
-        val ms = if (multiStem) players[mainStem]?.duration else primary?.duration
-        return ms?.takeIf { it > 0 && it != C.TIME_UNSET }
+        val duration = leader?.duration
+        return duration?.takeIf { it > 0 && it != C.TIME_UNSET }
             ?: (song.duration * 1000.0).toLong().coerceAtLeast(0L)
     }
-    val ended: Boolean get() = (if (multiStem) players[mainStem]?.playbackState
-        else primary?.playbackState) == Player.STATE_ENDED
+    val ended: Boolean get() = leader?.playbackState == Player.STATE_ENDED
 
-    /** Keep independently decoded stems in lockstep without re-seeking every frame. */
+    /** Called by the stage every 150 ms; corrections never touch the master clock. */
     fun synchronize() {
-        if (!playing) return
-        val reference = positionMs
-        players.forEach { (name, player) ->
-            if (!multiStem || name != mainStem) {
-                if (player.playbackState == Player.STATE_READY &&
-                    kotlin.math.abs(player.currentPosition - reference) > 160L) {
-                    player.seekTo(reference)
+        if (!initialized || released || !requestedPlayback) return
+        if (!allReady()) {
+            pauseForBuffering()
+            return
+        }
+        reconcile()
+        val master = leader ?: return
+        if (!master.isPlaying) return
+        followers().forEach { (stem, decoder) ->
+            if (stem == "vocals" && master.currentPosition < vocalOffsetMs) return@forEach
+            if (!decoder.isPlaying) return@forEach
+            val action = stemSyncAdjustment(master.currentPosition,
+                decoder.currentPosition, if (stem == "vocals") vocalOffsetMs else 0L)
+            if (action.seekToMs != null) {
+                decoder.seekTo(action.seekToMs)
+                correctionRates[stem] = 1f
+                applyParameters(stem, decoder)
+            } else {
+                val previous = correctionRates[stem] ?: 1f
+                if (kotlin.math.abs(previous - action.rate) >= .003f) {
+                    correctionRates[stem] = action.rate
+                    applyParameters(stem, decoder)
                 }
             }
         }

@@ -13,6 +13,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -45,15 +48,11 @@ fun TromuConnectionScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
-                        .background(Brush.linearGradient(
-                            listOf(colors.primary, colors.tertiary))),
-                        contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.GraphicEq, contentDescription = null,
-                            tint = colors.onPrimary)
-                    }
+                    Image(painter = painterResource(R.drawable.ic_tromuwelle),
+                        contentDescription = "Tromuwelle",
+                        modifier = Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)))
                     Spacer(Modifier.width(10.dp))
-                    Text("TROMUWELLE", style = MaterialTheme.typography.titleMedium,
+                    Text("Tromuwelle", style = MaterialTheme.typography.titleLarge,
                         color = colors.onBackground, fontWeight = FontWeight.Black)
                 }
                 TextButton(onClick = onAppearance) {
@@ -63,19 +62,30 @@ fun TromuConnectionScreen(
                 }
             }
 
-            Surface(Modifier.fillMaxWidth(), color = colors.primaryContainer,
-                shape = RoundedCornerShape(26.dp)) {
-                Column(Modifier.padding(22.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(Icons.Rounded.Waves, contentDescription = null,
-                        tint = colors.onPrimaryContainer,
-                        modifier = Modifier.size(30.dp))
-                    Text("Deine Medien. Dein Zuhause.",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = colors.onPrimaryContainer, fontWeight = FontWeight.ExtraBold)
-                    Text("Musik, Podcasts, Radio, Filme und Live-TV an einem Ort.",
+            Surface(Modifier.fillMaxWidth(), color = Color(0xFF21163E),
+                shape = RoundedCornerShape(30.dp)) {
+                Column(Modifier.background(Brush.linearGradient(listOf(
+                    Color(0xFF28154F), Color(0xFF101A3D), Color(0xFF0C3040))))
+                    .padding(22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("DEIN SOUND. DEINE BÜHNE.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF70E7ED), fontWeight = FontWeight.Black)
+                            Text("Alles, was du\nliebst. Hier.",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = Color.White, fontWeight = FontWeight.ExtraBold)
+                        }
+                        Image(painter = painterResource(R.drawable.ic_tromuwelle),
+                            contentDescription = null,
+                            modifier = Modifier.size(102.dp)
+                                .clip(RoundedCornerShape(26.dp)))
+                    }
+                    Text("Musik, Karaoke, Podcasts, Radio, Filme und Live-TV. " +
+                        "Dein eigenes Entertainment-Universum.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = colors.onPrimaryContainer)
+                        color = Color(0xFFDFE5FF))
                 }
             }
 

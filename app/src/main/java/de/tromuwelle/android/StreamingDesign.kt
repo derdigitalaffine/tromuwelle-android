@@ -26,6 +26,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -88,20 +90,18 @@ fun StreamScaffold(
     }
     Scaffold(containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 6.dp),
+            Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(14.dp))
-                    .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary))),
-                    contentAlignment = Alignment.Center) {
-                    Text("T", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.ExtraBold,
-                        style = MaterialTheme.typography.headlineSmall)
-                }
+                Image(painter = painterResource(R.drawable.ic_tromuwelle),
+                    contentDescription = "Tromuwelle", modifier = Modifier.size(43.dp)
+                        .clip(RoundedCornerShape(14.dp)))
                 Spacer(Modifier.width(11.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("TROMUWELLE", fontWeight = FontWeight.ExtraBold,
-                        style = MaterialTheme.typography.titleMedium)
-                    Text(if (tab == StreamTab.HOME) "Deine Medien. Ein Zuhause."
-                         else tab.title, style = MaterialTheme.typography.labelSmall,
+                    Text("Tromuwelle", fontWeight = FontWeight.Black,
+                        style = MaterialTheme.typography.titleLarge)
+                    Text(if (tab == StreamTab.HOME) "Dein Sound. Deine Bühne."
+                         else tab.title.uppercase(), style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onSearch) {
@@ -113,6 +113,7 @@ fun StreamScaffold(
                 IconButton(onClick = onProfile) {
                     Icon(Icons.Rounded.AccountCircle, contentDescription = "Konto und Verwaltung")
                 }
+            }
             }
         },
         bottomBar = {
@@ -126,10 +127,13 @@ fun StreamScaffold(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .clickable(onClick = if (video) onVideo else onPlayer),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        tonalElevation = 2.dp
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        tonalElevation = 8.dp
                     ) {
-                        Column {
+                        Column(Modifier.background(Brush.horizontalGradient(
+                            listOf(MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = .10f))))) {
                         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
@@ -181,14 +185,18 @@ fun StreamScaffold(
                 }
                 if (!expandedNavigation) {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 4.dp) {
+                        tonalElevation = 5.dp) {
                         StreamTab.entries.forEach { destination ->
                             NavigationBarItem(
                                 selected = tab == destination,
                                 onClick = { onTab(destination) },
                                 icon = { Icon(destination.icon, contentDescription = null) },
                                 label = { Text(destination.title, maxLines = 1) },
-                                alwaysShowLabel = true
+                                alwaysShowLabel = true,
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer)
                             )
                         }
                     }
@@ -230,8 +238,11 @@ fun StreamSectionTitle(title: String, subtitle: String, icon: ImageVector,
                        onRefresh: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().padding(start = 17.dp, end = 12.dp, top = 16.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(47.dp).clip(RoundedCornerShape(15.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(47.dp).clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(listOf(
+                MaterialTheme.colorScheme.primary.copy(alpha = .22f),
+                MaterialTheme.colorScheme.tertiary.copy(alpha = .14f)))),
+            contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
         Spacer(Modifier.width(12.dp))
@@ -252,13 +263,14 @@ fun StreamPosterCard(session: TromuwelleSession, entry: LibraryEntry,
                      onClick: () -> Unit, modifier: Modifier = Modifier,
                      wide: Boolean = false) {
     Card(onClick = onClick, modifier = modifier,
-        shape = RoundedCornerShape(17.dp),
+        shape = RoundedCornerShape(22.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Box(Modifier.fillMaxWidth().aspectRatio(if (wide) 1.7f else 1f)
             .clip(RoundedCornerShape(14.dp))) {
             AuthenticatedArtwork(session, entry, Modifier.fillMaxSize())
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
-                listOf(Color.Transparent, Color.Black.copy(alpha = 0.50f)))))
+                listOf(Color.Transparent, Color(0xFF090A1F).copy(alpha = 0.75f)))))
             if (entry.height >= 720) {
                 Text(if (entry.height >= 2160) "4K" else if (entry.height >= 1080) "1080p" else "HD",
                     modifier = Modifier.align(Alignment.TopEnd).padding(7.dp)
@@ -311,8 +323,12 @@ fun StreamPosterCard(session: TromuwelleSession, entry: LibraryEntry,
 fun StreamTrackRow(session: TromuwelleSession, entry: LibraryEntry,
                    favorite: Boolean, onOpen: () -> Unit, onFavorite: () -> Unit,
                    onDownload: (() -> Unit)? = null, onInfo: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen)
-        .padding(start = 16.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+    Surface(onClick = onOpen,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .57f)) {
+    Row(Modifier.fillMaxWidth()
+        .padding(start = 9.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically) {
         AuthenticatedArtwork(session, entry,
             Modifier.size(54.dp).clip(RoundedCornerShape(11.dp)))
@@ -342,6 +358,7 @@ fun StreamTrackRow(session: TromuwelleSession, entry: LibraryEntry,
             modifier = Modifier.size(42.dp)) {
             Icon(Icons.Rounded.MoreVert, contentDescription = "Dateiinformationen")
         }
+    }
     }
 }
 
@@ -539,9 +556,13 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
-                .height(302.dp).clip(RoundedCornerShape(27.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF173E3D),
-                    Color(0xFF242A58), Color(0xFF111722))))) {
+                .height(302.dp).clip(RoundedCornerShape(30.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF5322A0),
+                    Color(0xFF193C81), Color(0xFF08121F))))) {
+                Box(Modifier.align(Alignment.TopEnd).size(230.dp)
+                    .background(Brush.radialGradient(listOf(
+                        Color(0xFFFC64D1).copy(alpha = .35f),
+                        Color.Transparent)), RoundedCornerShape(115.dp)))
                 if (featured != null && featured.artwork.isNotBlank()) {
                     AuthenticatedArtwork(session, featured, Modifier.fillMaxSize().alpha(0.57f))
                 }
@@ -554,7 +575,7 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                     Surface(color = Color(0xD91A2837),
                         shape = RoundedCornerShape(8.dp)) {
                         Text(if (featured != null) "DEINE MEDIEN · AUS DER SAMMLUNG"
-                            else "TROMUWELLE · DEIN ZUHAUSE",
+                            else "TROMUWELLE · DEINE BÜHNE",
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White, fontWeight = FontWeight.Bold)
@@ -564,7 +585,7 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                         fontWeight = FontWeight.ExtraBold, color = Color.White,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(featured?.description?.ifBlank { "Neu in deiner Medienbibliothek" }
-                        ?: "Musik, Filme, Podcasts und Radio auf deinem eigenen Server.",
+                        ?: "Entdecke Musik, Filme und Live-Medien. Alles an einem Ort.",
                         maxLines = 2, overflow = TextOverflow.Ellipsis,
                         color = Color(0xFFDCE2EF),
                         style = MaterialTheme.typography.bodyMedium)

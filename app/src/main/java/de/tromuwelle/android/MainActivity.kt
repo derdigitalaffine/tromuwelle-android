@@ -41,6 +41,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -61,6 +62,7 @@ class MainActivity : ComponentActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         val token = SessionToken(this, ComponentName(this, TromuwellePlaybackService::class.java))
         controllerFuture = MediaController.Builder(this, token).buildAsync().also { future ->

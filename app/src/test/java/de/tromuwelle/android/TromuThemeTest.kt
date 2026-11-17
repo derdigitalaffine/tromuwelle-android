@@ -5,8 +5,8 @@ import org.junit.Test
 
 class TromuThemeTest {
     @Test fun unknownSavedThemeFallsBackSafely() {
-        assertEquals(TromuPalette.MINT, TromuPalette.fromStored("invalid"))
-        assertEquals(TromuPalette.MINT, TromuPalette.fromStored(null))
+        assertEquals(TromuPalette.AURORA, TromuPalette.fromStored("invalid"))
+        assertEquals(TromuPalette.AURORA, TromuPalette.fromStored(null))
         assertEquals(TromuAppearance.SYSTEM, TromuAppearance.fromStored("invalid"))
         assertEquals(TromuAppearance.SYSTEM, TromuAppearance.fromStored(null))
     }
