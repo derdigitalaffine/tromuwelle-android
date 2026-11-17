@@ -4,6 +4,18 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 
 **Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (laufender API-Abgleich mit dem aktuellen privaten Tromuwelle-Server).
 
+## v1.0.0 – Aurora-Design und synchronisiertes Karaoke
+
+![Tromuwelle Aurora 1.0](artwork/tromuwelle-v1-hero.svg)
+
+- **Neue Identität:** Komplett neue neonglänzende T-/Play-/Wellen-Bildmarke als adaptives Android-Launcher-Icon für Smartphone und Automotive, inklusive monochromer System-Icon-Variante.
+- **Aurora-Oberfläche:** Überarbeitete globale Material-3-Farben und Typografie, App-Kopf, Tablet-Navigation, Mini-Player, Medienkarten, Bibliothekslisten, Startseiten-Hero und Anmeldeseite. Bestehende Paletten, Hell-/Dunkelmodus, Systemanpassung und alle Medienfunktionen bleiben erhalten.
+- **Karaoke ohne auseinanderlaufende Tonspuren:** Instrumental und Gesang (sowie 6-Stem-Versionen) warten auf einen gemeinsamen READY-Zustand. Bei Rebuffering pausieren alle Spuren zusammen; ein Master-Zeitgeber korrigiert kleinere Abweichungen behutsam per Geschwindigkeitsregelung und größere sofort per Seek. Tempo/Tonhöhe werden dabei auf alle Spuren übertragen.
+- **Timing-Feinabgleich:** In der Karaoke-Regie kann die Gesangsspur pro Song in 25-ms-Schritten um ±400 ms justiert werden. Der Offset wird lokal pro Server und Karaoke-Version gespeichert.
+- **Qualitätskontrolle:** Android Mobile und Automotive laufen durch Gradle Unit-Tests, Android Lint und die APK-Builds in GitHub Actions. Timing-Korrekturen sind zusätzlich durch JVM-Tests abgedeckt.
+
+**Wichtige Grenzen:** Mehrere unabhängig dekodierte Media3-Player sind keine samplegenau gekoppelte DAW-Audio-Engine. Die Barriere und Driftkorrektur verhindern typisches hörbares Auseinanderlaufen, garantieren aber keine samplegenaue Synchronität auf sämtlicher Android-Hardware. Ein physischer Smartphone-Test mit echter Tromuwelle-Serverinstallation und wechselnden Audioausgängen sowie Automotive-/TalkBack-Tests sind weiterhin erforderlich. Der automatische GitHub-Build liefert derzeit **debugsignierte** APKs mit temporärem Schlüssel und ist kein produktiv signierter Play-Store-Build. Bestehende Installationen mit anderer Signatur benötigen ggf. eine Neuinstallation.
+
 ## v0.9.0-beta.1 – natives Karaoke-Studio
 
 Die Android-App bietet jetzt das Karaoke-Modul ohne WebView direkt über **Startseite → Karaoke-Studio**, **Musik → Karaoke** und **Profil → Karaoke**.
