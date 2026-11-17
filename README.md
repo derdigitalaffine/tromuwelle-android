@@ -4,6 +4,20 @@ Nativ implementierter Android-Client für das **private Hauptrepository Tromuwel
 
 **Funktionsabgleich:** [docs/feature-parity.md](docs/feature-parity.md) (laufender API-Abgleich mit dem aktuellen privaten Tromuwelle-Server).
 
+## v0.9.0-beta.1 – natives Karaoke-Studio
+
+Die Android-App bietet jetzt das Karaoke-Modul ohne WebView direkt über **Startseite → Karaoke-Studio**, **Musik → Karaoke** und **Profil → Karaoke**.
+
+- **Singbereit:** Vorbereitete 2- und 6-Stem-Songs mit Cover, Suche, Sortierung, Profilwahl, Seitensteuerung und Direktstart.
+- **Vorbereiten:** Eigene Karaoke-Versionen serverseitig erstellen, laufende CPU-Aufträge und Worker-Status einsehen, Aufträge abbrechen.
+- **Bühne:** Synchronisierte Zeilen- und Wort-Lyrics, Ausklang, längere Lesepausen, Countdown, animierte Übergänge, Wiedergabe, Seek, Lautstärke, Tempo und Tonhöhe. Vollbild ist **optional**, ein Exit-Button bleibt sichtbar. Regie/Fader sind in einem separaten aufklappbaren Mischpult-Bottom-Sheet.
+- **Audiomodi:** 2-Stem-Instrumental über den bestehenden Media3-Hintergrunddienst mit MediaSession und Sperrbildschirmsteuerung, optionaler Gesangsfader während geöffneter Bühne; 6-Stem-Studiomix über sechs synchronisierte native Media3-Decoder mit unabhängigen Fadern. **Für sechs Stems muss die Bühne geöffnet bleiben**; Hintergrundbetrieb über den OS-Dienst ist für die 2-Stem-Version ausgelegt.
+- **Solo-Setliste:** Titel sammeln und sortieren, direkt starten, automatisch zum nächsten Eintrag.
+- **Party-Regie:** Party anlegen und auswählen, Singer, Songwünsche, Reihenfolge, manuelle und automatische Steuerung, Einladungs-QR ohne Drittanbieter, Link kopieren/teilen, Party beenden.
+- **Sicherheit:** Bestehendes HTTPS-/Cookie-/Zertifikatsmodell, Berechtigungen bleiben vollständig serverseitig, Playback-Leases werden regelmäßig erneuert und beim Schließen freigegeben.
+
+**Wichtig:** Diese Beta benötigt ein aktiviertes Karaoke-Modul auf dem Tromuwelle-Server. CI-Tests und Android-/AAOS-Builds sind nicht mit einer Abnahme auf echten Geräten und gegen einen produktiven Backend-Server gleichzusetzen. Siehe [Funktionsabgleich](docs/feature-parity.md).
+
 ## v0.8.0-beta.1 – neue Tromuwelle-Module und Podcasting-2.0-Kapitel
 
 Die Android-App wurde mit dem aktuellen **Tromuwelle-Backend und Webfrontend** abgeglichen. Die Navigation bleibt eine kompakte 5-Tab-Navigation; neue Bereiche sind auf der Startseite unter „Mehr entdecken“ sowie im jeweiligen Medienbereich und im Profil zugänglich.

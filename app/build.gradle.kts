@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "de.tromuwelle.android"
     compileSdk = 35
-    defaultConfig { applicationId = "de.tromuwelle.android"; minSdk = 26; targetSdk = 35; versionCode = 13; versionName = "0.8.0-beta.1" }
+    defaultConfig { applicationId = "de.tromuwelle.android"; minSdk = 26; targetSdk = 35; versionCode = 14; versionName = "0.9.0-beta.1" }
     flavorDimensions += "surface"
     productFlavors {
         create("mobile") { dimension = "surface" }
@@ -28,6 +28,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
@@ -43,6 +44,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.google.android.gms:play-services-cast-framework:22.3.1")
+    implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }

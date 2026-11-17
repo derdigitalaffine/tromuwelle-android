@@ -448,6 +448,7 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                onPodcasts: () -> Unit,
                onAirwaves: () -> Unit,
                onPublicMediatheken: () -> Unit,
+               onKaraoke: () -> Unit,
                onPodcast: (org.json.JSONObject) -> Unit) {
     var snapshot by remember(session.server, session.username) { mutableStateOf(HomeSnapshot()) }
     var loading by remember(session.server, session.username) { mutableStateOf(true) }
@@ -624,6 +625,31 @@ fun StreamHome(session: TromuwelleSession, recentRadioIds: List<String>,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                }
+            }
+        }
+        item {
+            Surface(onClick = onKaraoke,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(20.dp)) {
+                Row(Modifier.padding(18.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(54.dp).clip(RoundedCornerShape(17.dp))
+                        .background(Brush.linearGradient(listOf(
+                            Color(0xFF7953BB), Color(0xFF493E9D)))),
+                        contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Mic, contentDescription = null,
+                            tint = Color.White, modifier = Modifier.size(30.dp))
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Karaoke-Studio", fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleMedium)
+                        Text("Singen, Lyrics, Setliste & Party-Regie",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = null)
                 }
             }
         }
