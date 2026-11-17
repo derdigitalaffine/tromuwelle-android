@@ -41,6 +41,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import kotlin.math.roundToInt
 
 private val stageNight = Color(0xFF0A0C19)
 private val stageViolet = Color(0xFFBAA4FF)
@@ -72,6 +73,7 @@ fun KaraokeStage(
     var position by remember(artifact.id) { mutableLongStateOf(0L) }
     var duration by remember(artifact.id) { mutableLongStateOf((song.duration * 1000).toLong()) }
     var playing by remember(artifact.id) { mutableStateOf(false) }
+    var buffering by remember(artifact.id) { mutableStateOf(false) }
     var ready by remember(artifact.id) { mutableStateOf(false) }
     var lyrics by remember(artifact.id) { mutableStateOf<List<KaraokeLine>>(emptyList()) }
     var error by remember(artifact.id) { mutableStateOf("") }
@@ -79,6 +81,11 @@ fun KaraokeStage(
     var volume by remember(artifact.id) { mutableFloatStateOf(.85f) }
     var tempo by remember(artifact.id) { mutableFloatStateOf(1f) }
     var pitch by remember(artifact.id) { mutableIntStateOf(0) }
+    val syncPrefs = remember(context) {
+        context.getSharedPreferences("tromuwelle_karaoke_sync_v1", 0)
+    }
+    val syncKey = session.server + ":" + artifact.id
+    var vocalOffset by remember(syncKey) { mutableIntStateOf(syncPrefs.getInt(syncKey, 0)) }
     val faders = remember(artifact.id) { mutableStateMapOf<String, Float>().apply {
         for (name in engine.availableFaders) this[name] = if (name == "vocals") 0f else 1f
     } }
@@ -94,9 +101,11 @@ fun KaraokeStage(
             catch (e: CancellationException) { throw e }
             catch (_: Exception) { emptyList() }
             engine.prepare()
+            engine.setVocalOffsetMs(vocalOffset)
             ready = true
             engine.play()
-            playing = true
+            playing = engine.playing
+            buffering = engine.buffering
             stageTransport.value(true, 0.0)
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { error = e.message ?: "Karaoke-Titel konnte nicht gestartet werden." }
@@ -108,6 +117,7 @@ fun KaraokeStage(
                 position = engine.positionMs
                 duration = engine.durationMs
                 playing = engine.playing
+                buffering = engine.buffering
                 if (engine.ended && !completed) {
                     completed = true
                     stageActive.value()
@@ -168,7 +178,12 @@ fun KaraokeStage(
                         tint = Color.White)
                 }
             }
-            if (!ready) LinearProgressIndicator(Modifier.fillMaxWidth(), color = stageViolet)
+            if (!ready || buffering) {
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = stageViolet)
+                if (ready && buffering) Text(
+                    "Tonspuren werden gepuffert und synchron gestartet …",
+                    color = stageMuted, style = MaterialTheme.typography.labelSmall)
+            }
             if (error.isNotBlank()) Text(error, color = Color(0xFFFFB5B5),
                 style = MaterialTheme.typography.bodySmall)
             Box(
@@ -339,6 +354,29 @@ fun KaraokeStage(
                             modifier = Modifier.weight(1f))
                     }
                 }
+                HorizontalDivider(color = stageMuted.copy(alpha = .2f))
+                Text("Gesang synchronisieren: " +
+                    (if (vocalOffset > 0) "+" else "") + vocalOffset + " ms",
+                    color = Color.White, fontWeight = FontWeight.SemiBold)
+                Slider(value = vocalOffset.toFloat(),
+                    onValueChange = {
+                        vocalOffset = (it / 25f).roundToInt() * 25
+                        engine.setVocalOffsetMs(vocalOffset)
+                    },
+                    onValueChangeFinished = {
+                        syncPrefs.edit().putInt(syncKey, vocalOffset).apply()
+                    },
+                    valueRange = -400f..400f, steps = 31)
+                Row(Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Stimme früher", color = stageMuted,
+                        style = MaterialTheme.typography.labelSmall)
+                    Text("Stimme später", color = stageMuted,
+                        style = MaterialTheme.typography.labelSmall)
+                }
+                Text("Automatischer Zeitabgleich ist aktiv. Hier kannst du einen " +
+                    "konstanten Versatz einzelner Dateien zusätzlich ausgleichen.",
+                    color = stageMuted, style = MaterialTheme.typography.labelSmall)
                 Text("Tempo ${"%.2f".format(tempo)}×", color = stageMuted)
                 Slider(value = tempo, onValueChange = {
                     tempo = it; engine.setTempo(it)
