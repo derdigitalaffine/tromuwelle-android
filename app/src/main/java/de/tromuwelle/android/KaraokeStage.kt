@@ -300,60 +300,7 @@ fun KaraokeStage(
                     Text(if (studio) "Regie aus" else "Regie", color = stageViolet)
                 }
             }
-            if (studio) Column(
-                Modifier.fillMaxWidth().heightIn(max = 230.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text("STUDIO & BÜHNE", color = stageViolet, fontWeight = FontWeight.Bold)
-                engine.availableFaders.forEach { name ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(when (name) {
-                            "vocals" -> "Gesang"; "drums" -> "Schlagzeug"
-                            "bass" -> "Bass"; "guitar" -> "Gitarre"
-                            "piano" -> "Klavier"; "other" -> "Weitere"
-                            else -> "Instrumental"
-                        }, color = Color.White, modifier = Modifier.width(110.dp),
-                            style = MaterialTheme.typography.bodySmall)
-                        Slider(value = faders[name] ?: 1f,
-                            onValueChange = {
-                                faders[name] = it
-                                engine.setGain(name, it)
-                            }, valueRange = 0f..1.5f,
-                            modifier = Modifier.weight(1f))
-                    }
-                }
-                Text("Tempo ${"%.2f".format(tempo)}×", color = stageMuted)
-                Slider(value = tempo, onValueChange = {
-                    tempo = it; engine.setTempo(it)
-                }, valueRange = .7f..1.3f)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Tonhöhe ${if (pitch > 0) "+" else ""}$pitch", color = stageMuted,
-                        modifier = Modifier.weight(1f))
-                    IconButton(onClick = { pitch = (pitch - 1).coerceAtLeast(-5); engine.setPitch(pitch) }) {
-                        Icon(Icons.Rounded.Remove, "Tonhöhe senken", tint = Color.White)
-                    }
-                    IconButton(onClick = { pitch = (pitch + 1).coerceAtMost(5); engine.setPitch(pitch) }) {
-                        Icon(Icons.Rounded.Add, "Tonhöhe erhöhen", tint = Color.White)
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Lyrics-Größe", color = stageMuted, modifier = Modifier.width(110.dp))
-                    Slider(value = lyricScale, onValueChange = { lyricScale = it },
-                        valueRange = .8f..1.5f, modifier = Modifier.weight(1f))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Bühnenbildschirm wach halten", color = Color.White,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall)
-                    Switch(checked = keepAwake, onCheckedChange = { keepAwake = it })
-                }
-                if (engine.multiStem) Text(
-                    "6-Stem-Studio: Für den Mehrspur-Mix muss die Bühne geöffnet bleiben. " +
-                        "2-Stem-Versionen laufen über den Android-Hintergrundplayer.",
-                    color = stageMuted, style = MaterialTheme.typography.labelSmall)
-            }
+
         }
     }
     if (fullscreen) {
@@ -362,6 +309,14 @@ fun KaraokeStage(
             screen()
         }
     } else screen()
+    if (studio) ModalBottomSheet(
+        onDismissRequest = { studio = false },
+        containerColor = stageNight,
+        contentColor = Color.White,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+${sheetContent}
+    }
 }
 
 private fun karaokeClock(ms: Long): String {
