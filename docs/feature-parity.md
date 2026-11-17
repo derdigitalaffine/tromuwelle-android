@@ -1,5 +1,23 @@
 # Funktionsabgleich: privates Tromuwelle-main → Android
 
+## v0.9.0-beta.1 – natives Karaoke-Studio (17.11.2026)
+
+| Karaoke-Funktion | Android-Umsetzung | Backend-Vertrag / Einschränkung |
+|---|---|---|
+| Opt-in und Berechtigungen | Modulstatus; deaktiviertes Karaoke sauber ausgeblendet | `GET /api/karaoke/status`, serverseitige Musik-ACL |
+| Fertige Songs | Native Suche, Profile, Cover, Seiten und Sortierung | `GET /api/karaoke/ready` |
+| Songvorbereitung | 2- oder 6-Stem-CPU-Job starten | `GET /api/karaoke/tracks`, `POST /api/karaoke/jobs` |
+| Audio 2 Stems | Instrumental im bestehenden Media3 MediaLibraryService mit MediaSession und Sperrbildschirmsteuerung; Gesangsfader in der Bühne | `GET /api/karaoke/artifacts/{id}/instrumental|vocals` |
+| Audio 6 Stems | Sechs native Media3-Decodierungen, Fader/Synchronisation; sichtbare Bühne erforderlich | Stems drums, bass, guitar, piano, other, vocals |
+| Lyrics & Animation | Wort-/Zeilen-Timestamps, Lesepausen, Instrumental-Countdown, Outro, Schriftgrößenänderung | `GET /api/karaoke/lyrics/{track_id}` |
+| Player | Start/Pause, Seek, Tempo, Pitch, Lautstärke, Regie, optionaler Vollbildmodus, Exit, Screen-on-Option | Playback Lease / Media3 |
+| Solo-Setliste | Bis 100 Einträge, Reihenfolge, Songwechsel | Lokaler Zustand während der aktuellen Sitzung |
+| Party-Regie | Parties anlegen und auswählen, Songwünsche hinzufügen, Setlist-Aktionen, Start, Auto/Manuell, Einladungslink/QR, Beenden | `/api/karaoke/sessions/*`; QR wird lokal generiert |
+| Authentisierung | Nur authentifizierte Session-Cookies, normale TLS-Trust-Policy, keine WebView | Identisch zum Tromuwelle-Client |
+
+**Abnahme:** JVM/Android-Lint und Mobile/Automotive Builds über CI. Noch nicht auf echtem Android-Gerät mit Tromuwelle-Karaoke-Backend abgenommen. Der native 6-Stem-Livemix benötigt aktuell eine aktive Bühnenansicht; für zuverlässiges Hintergrund-Audio bei Bildschirmabschaltung empfiehlt sich die 2-Stem-Version über die MediaLibraryService. Das ist eine ausgewiesene Funktionsgrenze, keine behauptete Hintergrundgarantie für sechs Audiodecoder.
+
+
 Referenz: `derdigitalaffine/tromuwelle` `086e8eb69f964681544b66663e61e6cd9d6e3195`, read-only analysiert am 15.11.2026. Ziel: `derdigitalaffine/tromuwelle-android` main.
 
 | Bereich / Feature im Hauptrepo | Native Android-Umsetzung | Hinweise |
