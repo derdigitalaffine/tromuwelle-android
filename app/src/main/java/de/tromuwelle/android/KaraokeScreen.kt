@@ -202,7 +202,8 @@ fun KaraokeScreen(session: TromuwelleSession, player: Player?, onBack: () -> Uni
     BackHandler(active == null) { onBack() }
     if (active != null) {
         val stage = active!!
-        KaraokeStage(session, player, stage.song, stage.version,
+        key(stage.queueId) {
+            KaraokeStage(session, player, stage.song, stage.version,
             onClose = {
                 val item = activePartyItem
                 val id = partyId
@@ -275,6 +276,7 @@ fun KaraokeScreen(session: TromuwelleSession, player: Player?, onBack: () -> Uni
                     }
                 }
             })
+        }
         return
     }
 
