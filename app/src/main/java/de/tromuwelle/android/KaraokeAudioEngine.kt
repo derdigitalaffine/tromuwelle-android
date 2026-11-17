@@ -129,9 +129,18 @@ class KaraokeAudioEngine(
 
     private fun allReady(): Boolean {
         val master = leader ?: return false
-        return initialized && players.size == names.size &&
-            master.playbackState == Player.STATE_READY &&
-            players.values.all { it.playbackState == Player.STATE_READY }
+        if (!initialized || players.size != names.size ||
+            master.playbackState != Player.STATE_READY) return false
+        // Encoders may trim a few samples from one exported stem. A follower
+        // that finishes in the last second must not deadlock the entire song.
+        val masterDuration = master.duration
+        val nearEnd = masterDuration > 0L && masterDuration != C.TIME_UNSET &&
+            master.currentPosition >= (masterDuration - 1500L).coerceAtLeast(0L)
+        return players.values.all { decoder ->
+            decoder.playbackState == Player.STATE_READY ||
+                (decoder !== master && nearEnd &&
+                    decoder.playbackState == Player.STATE_ENDED)
+        }
     }
 
     private fun pauseFollowers() {
@@ -174,6 +183,7 @@ class KaraokeAudioEngine(
                 return
             }
             followers().forEach { (stem, decoder) ->
+                if (decoder.playbackState == Player.STATE_ENDED) return@forEach
                 if (stem == "vocals" && master.currentPosition < vocalOffsetMs) {
                     if (decoder.playWhenReady) decoder.pause()
                 } else if (!decoder.playWhenReady) {
