@@ -65,7 +65,7 @@ fun karaokeLyrics(response: JSONObject): List<KaraokeLine> {
         }.sortedBy { it.start }
     }
     val lrc = response.optJSONObject("source")?.optString("synced").orEmpty()
-    val pattern = Regex("""\\[(\\d{1,3}):(\\d{1,2}(?:\\.\\d+)?)\\]""")
+    val pattern = Regex("""\[(\d{1,3}):(\d{1,2}(?:\.\d+)?)\]""")
     val starts = lrc.lineSequence().flatMap { line ->
         val match = pattern.findAll(line).toList()
         val words = line.substringAfterLast("]").trim()
@@ -76,7 +76,7 @@ fun karaokeLyrics(response: JSONObject): List<KaraokeLine> {
         }
     }.sortedBy { it.first }.toList()
     return starts.mapIndexed { index, (start, text) ->
-        val estimated = (text.split(Regex("""\\s+""")).size * 0.5).coerceIn(1.5, 7.0)
+        val estimated = (text.split(Regex("""\s+""")).size * 0.5).coerceIn(1.5, 7.0)
         val next = starts.getOrNull(index + 1)?.first ?: start + 7.0
         KaraokeLine(text, start, max(start, min(start + estimated, next - 0.1)))
     }
