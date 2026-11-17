@@ -590,15 +590,24 @@ fun KaraokeScreen(session: TromuwelleSession, player: Player?, onBack: () -> Uni
                                         horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                         if (item.optString("state") != "done") {
                                             Button(onClick = {
+                                                val id = partyId
+                                                val itemId = item.optString("id")
+                                                val song = KaraokeSong(item.optString("track_id"),
+                                                    item.optString("title"),
+                                                    item.optString("artist"), "", 0.0)
+                                                val artifactId = item.optString("artifact_id")
                                                 action {
-                                                    withContext(Dispatchers.IO) {
-                                                        api.setlistAction(partyId, item.optString("id"), "play")
+                                                    val versions = withContext(Dispatchers.IO) {
+                                                        api.versions(song.id)
                                                     }
-                                                    val song = KaraokeSong(item.optString("track_id"),
-                                                        item.optString("title"),
-                                                        item.optString("artist"), "", 0.0)
-                                                    openSong(song, item.optString("artifact_id"),
-                                                        item.optString("id"))
+                                                    val version = versions.firstOrNull {
+                                                        it.id == artifactId
+                                                    } ?: error("Karaoke-Version nicht mehr verfügbar.")
+                                                    withContext(Dispatchers.IO) {
+                                                        api.setlistAction(id, itemId, "play")
+                                                    }
+                                                    activePartyItem = itemId
+                                                    active = KaraokeSetSong(song, version)
                                                 }
                                             }) {
                                                 Icon(Icons.Rounded.PlayArrow, null)
