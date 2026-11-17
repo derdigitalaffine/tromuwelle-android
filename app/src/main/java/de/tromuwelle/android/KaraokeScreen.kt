@@ -142,8 +142,17 @@ fun KaraokeScreen(session: TromuwelleSession, player: Player?, onBack: () -> Uni
         catch (e: Exception) { notice = e.message ?: "Karaoke-Server nicht erreichbar." }
         while (isActive) {
             delay(5000)
-            try { status = withContext(Dispatchers.IO) { api.status() } }
-            catch (e: CancellationException) { throw e }
+            try {
+                val oldCompleted = status?.optJSONArray("jobs")?.objectsKaraoke()
+                    .orEmpty().filter { it.optString("status") == "completed" }
+                    .map { it.optString("id") }.toSet()
+                val next = withContext(Dispatchers.IO) { api.status() }
+                val newCompleted = next.optJSONArray("jobs")?.objectsKaraoke()
+                    .orEmpty().filter { it.optString("status") == "completed" }
+                    .map { it.optString("id") }.toSet()
+                status = next
+                if ((newCompleted - oldCompleted).isNotEmpty()) refresh++
+            } catch (e: CancellationException) { throw e }
             catch (_: Exception) { /* Avoid replacing content with a transient polling error. */ }
         }
     }
@@ -287,6 +296,52 @@ fun KaraokeScreen(session: TromuwelleSession, player: Player?, onBack: () -> Uni
                 }
             }
             if (view != KaraokeView.PARTY) {
+                if (view == KaraokeView.PREPARE) {
+                    val jobs = status?.optJSONArray("jobs")?.objectsKaraoke().orEmpty().take(12)
+                    Card(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                        shape = RoundedCornerShape(16.dp)) {
+                        Column(Modifier.padding(12.dp).heightIn(max = 175.dp)
+                            .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Server-Vorbereitung", fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f))
+                                val online = status?.optBoolean("worker_online") == true
+                                Text(if (online) "Worker online" else "Worker offline",
+                                    color = if (online) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.labelSmall)
+                            }
+                            if (jobs.isEmpty()) Text("Noch keine Vorbereitungsaufträge.",
+                                style = MaterialTheme.typography.bodySmall)
+                            jobs.forEach { job ->
+                                Row(Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(job.optString("kind") + " · " +
+                                            job.optString("profile") + " Stems · " +
+                                            job.optString("status"),
+                                            style = MaterialTheme.typography.labelMedium)
+                                        Text(job.optString("message"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 2)
+                                    }
+                                    if (job.optString("status") in listOf(
+                                            "queued", "running", "waiting_resources")) {
+                                        TextButton(onClick = {
+                                            action {
+                                                withContext(Dispatchers.IO) {
+                                                    api.cancelJob(job.optString("id"))
+                                                    status = api.status()
+                                                }
+                                            }
+                                        }) { Text("Stoppen") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(value = query,
                     onValueChange = { query = it; offset = 0 },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
