@@ -200,6 +200,7 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
     var videoSelection by remember { mutableStateOf<LibraryEntry?>(null) }
     var browse by remember { mutableStateOf(MusicBrowse.TRACKS) }
     var playlistsPage by remember { mutableStateOf(false) }
+    var karaokePage by remember { mutableStateOf(false) }
     var lyricsEntry by remember { mutableStateOf<LibraryEntry?>(null) }
     var musicSort by remember { mutableStateOf("album") }
     var minBitrate by remember { mutableIntStateOf(0) }
@@ -653,6 +654,10 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
             })
         return
     }
+    if (connected && karaokePage) {
+        KaraokeScreen(session, player, onBack = { karaokePage = false })
+        return
+    }
     if (connected && playlistsPage) {
         MusicPlaylistsScreen(session, onBack = { playlistsPage = false },
             onPlay = { tracks ->
@@ -869,6 +874,14 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
                         },
                         onAirwaves = { airwavesOpen = true },
                         onPublicMediatheken = { publicMediathekenOpen = true },
+                        onKaraoke = {
+                            audioSheetOpen = false
+                            current = null
+                            currentPrivate = false
+                            activePodcast = null
+                            queueEntries = emptyList()
+                            karaokePage = true
+                        },
                         onPodcast = { playPodcastEpisode(it) })
                 }
             } else Column(Modifier.fillMaxSize().padding(innerPadding)) {
@@ -891,6 +904,22 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
                     streamTab.icon,
                     onRefresh = { refresh() }
                 )
+                if (section == LibrarySection.MUSIC) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
+                        FilledTonalButton(onClick = {
+                            audioSheetOpen = false
+                            current = null
+                            currentPrivate = false
+                            activePodcast = null
+                            queueEntries = emptyList()
+                            karaokePage = true
+                        }) {
+                            Icon(Icons.Rounded.Mic, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Karaoke · Bühne & Party")
+                        }
+                    }
+                }
                 if (section == LibrarySection.RADIO) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
                         AssistChip(onClick = { airwavesOpen = true },
@@ -1243,6 +1272,19 @@ private fun TromuwelleScreen(session: TromuwelleSession, player: Player?,
                 TextButton(onClick = {
                     profileOpen = false; streamTab = StreamTab.MUSIC; podcastsOpen = true
                 }) { Text("Podcasts & Abonnements") }
+                TextButton(onClick = {
+                    profileOpen = false
+                    audioSheetOpen = false
+                    current = null
+                    currentPrivate = false
+                    activePodcast = null
+                    queueEntries = emptyList()
+                    karaokePage = true
+                }) {
+                    Icon(Icons.Rounded.Mic, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Karaoke · Bühne & Party")
+                }
                 TextButton(onClick = {
                     profileOpen = false; airwavesOpen = true
                 }) {
