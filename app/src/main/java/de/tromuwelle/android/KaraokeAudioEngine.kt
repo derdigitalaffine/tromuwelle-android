@@ -64,7 +64,8 @@ class KaraokeAudioEngine(
             val player = ExoPlayer.Builder(context)
                 .setMediaSourceFactory(factory)
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), false)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
+                    multiStem && stem == mainStem)
                 .setHandleAudioBecomingNoisy(true)
                 .build()
             player.setMediaItem(MediaItem.Builder().setUri(api.stemUrl(artifact.id, stem))
@@ -72,6 +73,18 @@ class KaraokeAudioEngine(
             player.volume = loudness * (gains[stem] ?: 1f)
             player.prepare()
             players[stem] = player
+            if (multiStem && stem == mainStem) {
+                player.addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        // The leading decoder owns audio focus. Followers must
+                        // not continue if focus is lost, playback stalls or an
+                        // incoming call pauses the leading stem.
+                        players.filterKeys { it != mainStem }.values.forEach {
+                            if (isPlaying) it.play() else it.pause()
+                        }
+                    }
+                })
+            }
         }
     }
 
