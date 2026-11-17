@@ -203,18 +203,62 @@ fun KaraokeScreen(session: TromuwelleSession, player: Player?, onBack: () -> Uni
     if (active != null) {
         val stage = active!!
         KaraokeStage(session, player, stage.song, stage.version,
-            onClose = { active = null; activePartyItem = "" },
+            onClose = {
+                val item = activePartyItem
+                val id = partyId
+                active = null
+                activePartyItem = ""
+                if (item.isNotBlank() && id.isNotBlank()) scope.launch {
+                    try { withContext(Dispatchers.IO) {
+                        api.controlParty(id, JSONObject().put("playing", false)
+                            .put("current_item", "").put("position", 0))
+                    } } catch (e: Exception) {
+                        notice = e.message ?: "Party-Steuerung nicht erreichbar."
+                    }
+                }
+            },
             onFinished = {
                 val item = activePartyItem
                 val partyForDone = partyId
+                val nextPending = if (party?.optString("mode") == "auto")
+                    partyItems.firstOrNull { it.optString("state") == "pending" &&
+                        it.optString("id") != item } else null
+                val index = solo.indexOfFirst { it.queueId == stage.queueId }
+                active = if (item.isBlank() && index >= 0)
+                    solo.getOrNull(index + 1) else null
+                activePartyItem = ""
                 if (item.isNotBlank() && partyForDone.isNotBlank()) {
-                    scope.launch(Dispatchers.IO) {
-                        runCatching { api.setlistAction(partyForDone, item, "done") }
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                api.setlistAction(partyForDone, item, "done")
+                            }
+                            if (nextPending != null) {
+                                val song = KaraokeSong(nextPending.optString("track_id"),
+                                    nextPending.optString("title"),
+                                    nextPending.optString("artist"), "", 0.0)
+                                val nextArtifactId = nextPending.optString("artifact_id")
+                                val version = withContext(Dispatchers.IO) {
+                                    api.versions(song.id).firstOrNull { it.id == nextArtifactId }
+                                } ?: error("Nächste Karaoke-Version nicht mehr verfügbar.")
+                                withContext(Dispatchers.IO) {
+                                    api.setlistAction(partyForDone,
+                                        nextPending.optString("id"), "play")
+                                }
+                                activePartyItem = nextPending.optString("id")
+                                active = KaraokeSetSong(song, version)
+                            } else {
+                                withContext(Dispatchers.IO) {
+                                    api.controlParty(partyForDone,
+                                        JSONObject().put("playing", false)
+                                            .put("current_item", "").put("position", 0))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            notice = e.message ?: "Nächster Song konnte nicht gestartet werden."
+                        }
                     }
                 }
-                val index = solo.indexOfFirst { it.queueId == stage.queueId }
-                active = if (index >= 0) solo.getOrNull(index + 1) else null
-                activePartyItem = ""
             },
             onTransport = { playing, position ->
                 if (activePartyItem.isNotBlank() && partyId.isNotBlank()) {
