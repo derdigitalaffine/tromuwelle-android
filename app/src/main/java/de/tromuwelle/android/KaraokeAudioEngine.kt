@@ -159,6 +159,13 @@ class KaraokeAudioEngine(
             if (!master.playWhenReady) {
                 alignFollowers(master.currentPosition, onlyHard = true)
                 if (!allReady()) return
+                // The decoders are already READY: issue the play commands in
+                // one barrier turn instead of waiting one UI polling interval
+                // before the backing vocals begin.
+                followers().forEach { (stem, decoder) ->
+                    if (stem != "vocals" || master.currentPosition >= vocalOffsetMs)
+                        decoder.play()
+                }
                 master.play()
             }
             if (!master.isPlaying) {
