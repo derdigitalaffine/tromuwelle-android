@@ -70,7 +70,37 @@ fun KaraokeScreen(session: TromuwelleSession, player: Player?, onBack: () -> Uni
     var tracks by remember { mutableStateOf<List<KaraokeSong>>(emptyList()) }
     var refresh by remember { mutableIntStateOf(0) }
     var active by remember { mutableStateOf<KaraokeSetSong?>(null) }
-    val solo = remember { mutableStateListOf<KaraokeSetSong>() }
+    val queuePrefs = remember(context) {
+        context.getSharedPreferences("karaoke_solo_setlists", Context.MODE_PRIVATE)
+    }
+    val queueKey = session.server + ":" + session.username
+    val solo = remember(queueKey) {
+        mutableStateListOf<KaraokeSetSong>().apply {
+            try {
+                val saved = JSONArray(queuePrefs.getString(queueKey, "[]"))
+                saved.objectsKaraoke().take(100).forEach { row ->
+                    val artifact = KaraokeVersion(row.optString("artifact"), row.optString("profile"))
+                    if (row.optString("id").isNotBlank() && artifact.id.isNotBlank() &&
+                        artifact.profile in listOf("2", "6")) {
+                        val song = KaraokeSong(row.optString("id"), row.optString("title"),
+                            row.optString("artist"), row.optString("album"),
+                            row.optDouble("duration"))
+                        add(KaraokeSetSong(song, artifact))
+                    }
+                }
+            } catch (_: Exception) { clear() }
+        }
+    }
+    LaunchedEffect(queueKey, solo.toList()) {
+        val rows = JSONArray()
+        solo.take(100).forEach { item ->
+            rows.put(JSONObject().put("id", item.song.id)
+                .put("title", item.song.title).put("artist", item.song.artist)
+                .put("album", item.song.album).put("duration", item.song.duration)
+                .put("artifact", item.version.id).put("profile", item.version.profile))
+        }
+        queuePrefs.edit().putString(queueKey, rows.toString()).apply()
+    }
     var partyList by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var partyId by remember { mutableStateOf("") }
     var partyName by remember { mutableStateOf("Meine Karaoke-Party") }
