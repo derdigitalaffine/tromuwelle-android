@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 
 /** User-selectable Material 3 palettes. Settings contain no account information. */
 enum class TromuPalette(val title: String, val darkAccent: Color, val lightAccent: Color) {
+    AURORA("Aurora", Color(0xFFC7ABFF), Color(0xFF7148BE)),
     MINT("Mint", Color(0xFF69E5CD), Color(0xFF006B58)),
     OCEAN("Ozean", Color(0xFF88C8FF), Color(0xFF175E9F)),
     VIOLET("Violett", Color(0xFFD1B1FF), Color(0xFF7041A5)),
@@ -26,7 +27,7 @@ enum class TromuPalette(val title: String, val darkAccent: Color, val lightAccen
 
     companion object {
         fun fromStored(value: String?): TromuPalette =
-            entries.firstOrNull { it.name == value } ?: MINT
+            entries.firstOrNull { it.name == value } ?: AURORA
     }
 }
 
@@ -75,19 +76,19 @@ fun TromuStreamingTheme(settings: TromuThemeSettings, content: @Composable () ->
         darkColorScheme(
             primary = palette.darkAccent,
             onPrimary = Color(0xFF0C1420),
-            secondary = Color(0xFFAAC5E6),
-            onSecondary = Color(0xFF10253F),
-            tertiary = Color(0xFFB6B1FA),
-            onTertiary = Color(0xFF242047),
-            background = Color(0xFF090E18),
-            onBackground = Color(0xFFF5F7FF),
-            surface = Color(0xFF121A28),
-            onSurface = Color(0xFFF5F7FF),
-            surfaceVariant = Color(0xFF243044),
-            onSurfaceVariant = Color(0xFFD1DBEA),
-            primaryContainer = Color(0xFF26384D),
+            secondary = Color(0xFF68E5EF),
+            onSecondary = Color(0xFF061B26),
+            tertiary = Color(0xFFFF8DBE),
+            onTertiary = Color(0xFF3B1027),
+            background = Color(0xFF080A16),
+            onBackground = Color(0xFFF7F7FF),
+            surface = Color(0xFF121426),
+            onSurface = Color(0xFFF7F7FF),
+            surfaceVariant = Color(0xFF292B45),
+            onSurfaceVariant = Color(0xFFBFC5DE),
+            primaryContainer = Color(0xFF30244F),
             onPrimaryContainer = Color(0xFFF2F8FF),
-            outline = Color(0xFF718197),
+            outline = Color(0xFF777C9C),
             error = Color(0xFFFFB3B8),
             onError = Color(0xFF5F1119),
             errorContainer = Color(0xFF5B242D),
@@ -97,19 +98,19 @@ fun TromuStreamingTheme(settings: TromuThemeSettings, content: @Composable () ->
         lightColorScheme(
             primary = palette.lightAccent,
             onPrimary = Color.White,
-            secondary = Color(0xFF435F7B),
+            secondary = Color(0xFF146778),
             onSecondary = Color.White,
-            tertiary = Color(0xFF59559D),
+            tertiary = Color(0xFF9A326B),
             onTertiary = Color.White,
-            background = Color(0xFFF4F7FC),
-            onBackground = Color(0xFF111A2A),
+            background = Color(0xFFF7F6FE),
+            onBackground = Color(0xFF191628),
             surface = Color.White,
-            onSurface = Color(0xFF142035),
-            surfaceVariant = Color(0xFFE5EBF4),
+            onSurface = Color(0xFF191628),
+            surfaceVariant = Color(0xFFECEAF7),
             onSurfaceVariant = Color(0xFF394B61),
-            primaryContainer = Color(0xFFDDECF9),
-            onPrimaryContainer = Color(0xFF132944),
-            outline = Color(0xFF687D92),
+            primaryContainer = Color(0xFFEBE1FF),
+            onPrimaryContainer = Color(0xFF30174E),
+            outline = Color(0xFF79728C),
             error = Color(0xFFB32631),
             onError = Color.White,
             errorContainer = Color(0xFFFFDADD),
@@ -127,8 +128,8 @@ fun TromuStreamingTheme(settings: TromuThemeSettings, content: @Composable () ->
                 fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp),
             headlineSmall = base.headlineSmall.copy(
                 fontWeight = FontWeight.Bold, letterSpacing = (-0.25).sp),
-            titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
-            titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            titleLarge = base.titleLarge.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp),
+            titleMedium = base.titleMedium.copy(fontWeight = FontWeight.Bold),
             labelLarge = base.labelLarge.copy(fontWeight = FontWeight.SemiBold)
         )
     }
@@ -136,9 +137,9 @@ fun TromuStreamingTheme(settings: TromuThemeSettings, content: @Composable () ->
         shapes = Shapes(
             extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
             small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-            medium = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-            large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-            extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
+            medium = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+            large = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+            extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(32.dp)
         ), content = content)
 }
 
